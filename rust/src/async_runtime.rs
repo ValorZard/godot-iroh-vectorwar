@@ -16,19 +16,18 @@ pub struct AsyncRuntime {
 #[godot_api]
 impl IObject for AsyncRuntime {
     fn init(base: Base<Object>) -> Self {
+        /*
         let runtime = runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
-
-        /*
-        lets try single threaded for now
-        #[cfg(feature = "multi-thread")]
+        */
+        
         let runtime = runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap();
-        */
+        
 
         Self {
             base,
