@@ -41,3 +41,5 @@ unsafe impl ExtensionLibrary for RustExtension {
 
 mod async_runtime;
 mod player;
+mod client_button;
+mod server_button;

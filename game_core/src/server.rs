@@ -22,6 +22,8 @@ use quinn_proto::crypto::rustls::QuicClientConfig;
 use rkyv::{Archived, de, rancor, ser};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 
+pub type ChannelMap = Arc<Mutex<HashMap<PlayerId, MessageChannels>>>;
+
 pub fn make_server_endpoint(
     bind_addr: SocketAddr,
 ) -> Result<(Endpoint, CertificateDer<'static>), Box<dyn Error + Send + Sync + 'static>> {
@@ -46,7 +48,7 @@ fn configure_server()
 }
 
 pub async fn run_server()
--> Result<Arc<Mutex<HashMap<PlayerId, MessageChannels>>>, Box<dyn Error + Send + Sync + 'static>> {
+-> Result<ChannelMap, Box<dyn Error + Send + Sync + 'static>> {
     //console_subscriber::init();
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8080);
     let channel_map = Arc::new(Mutex::new(HashMap::<PlayerId, MessageChannels>::new()));
@@ -57,14 +59,14 @@ pub async fn run_server()
 
 #[derive(Debug)]
 pub struct MessageChannels {
-    receiver: async_channel::Receiver<ClientMessage>,
-    sender: async_channel::Sender<ServerMessage>,
+    pub receiver: async_channel::Receiver<ClientMessage>,
+    pub sender: async_channel::Sender<ServerMessage>,
 }
 
 /// Runs a QUIC server bound to given address.
 pub async fn run_quinn_server(
     addr: SocketAddr,
-    channel_map: Arc<Mutex<HashMap<PlayerId, MessageChannels>>>,
+    channel_map: ChannelMap,
 ) {
     let (endpoint, _server_cert) = make_server_endpoint(addr).unwrap();
 

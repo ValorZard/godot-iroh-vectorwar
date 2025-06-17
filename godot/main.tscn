@@ -7,3 +7,18 @@
 [node name="Player" type="Player" parent="."]
 position = Vector2(903, 491)
 texture = ExtResource("1_ig7tw")
+
+[node name="ClientButton" type="ClientButton" parent="."]
+offset_left = 108.0
+offset_top = 430.0
+offset_right = 391.0
+offset_bottom = 605.0
+text = "client
+"
+
+[node name="ServerButton" type="ServerButton" parent="."]
+offset_left = 182.0
+offset_top = 161.0
+offset_right = 343.0
+offset_bottom = 291.0
+text = "Server"

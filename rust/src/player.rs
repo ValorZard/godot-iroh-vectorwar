@@ -1,7 +1,6 @@
 use game_core::client::run_client;
 use game_core::server::run_server;
 use godot::classes::Sprite2D;
-use godot::classes::class_macros::sys::godot_virtual_consts::EditorExportPlatformExtension::run;
 use godot::prelude::*;
 
 #[derive(GodotClass)]
@@ -30,18 +29,7 @@ impl ISprite2D for Player {
     }
 
     fn ready(&mut self) {
-        // we are going to shove this in here for now for testing purposes
-        if let Ok(channel_map) = AsyncRuntime::block_on(run_server()) {
-            godot_print!("server running");
-        } else {
-            godot_print!("failed to run server");
-        }
 
-        if let Ok((server_receiver, client_sender)) = AsyncRuntime::block_on(run_client()) {
-            godot_print!("client running");
-        } else {
-            godot_print!("failed to run client");
-        }
     }
 
     fn physics_process(&mut self, delta: f64) {
