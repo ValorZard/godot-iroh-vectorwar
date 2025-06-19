@@ -27,7 +27,7 @@ impl ISprite2D for Player {
         Self {
             speed: 400.0,
             angular_speed: std::f64::consts::PI,
-            player_id: 0,    // Default player ID, can be set later
+            player_id: 0,   // Default player ID, can be set later
             is_local: true, // Default to not being local, can be set later
             base,
         }
@@ -61,7 +61,6 @@ impl ISprite2D for Player {
 
 #[godot_api]
 impl Player {
-
     #[func]
     pub fn set_player_id(&mut self, player_id: game_core::PlayerId) {
         self.player_id = player_id;

@@ -1,3 +1,5 @@
+use std::{collections::HashMap, hash::Hash};
+
 use game_core::{ClientMessage, PlayerId, PlayerPosition, ServerMessage, client::run_client};
 use godot::{
     classes::{Button, IButton, Sprite2D},
@@ -21,6 +23,7 @@ struct ClientButton {
     player_ref: Option<Gd<Player>>,
     #[export]
     remote_player_ref: Option<Gd<PackedScene>>,
+    remote_player_map: HashMap<PlayerId, Gd<Player>>,
     base: Base<Button>,
 }
 
@@ -34,6 +37,7 @@ impl IButton for ClientButton {
             remote_player_ref: None, // Reference to the remote player, if needed
             world: World::new(),   // Initialize a new Hecs World
             local_player_id: 0,    // Local player ID, initialized to 0
+            remote_player_map: HashMap::new(), // Map to keep track of remote players
             base,
         }
     }
@@ -75,7 +79,7 @@ impl IButton for ClientButton {
                         for (_, (id, position)) in query {
                             if *id == remote_player_id {
                                 *position = player_data;
-                                /* 
+                                /*
                                 godot_print!(
                                     "Updated position for player {}: ({}, {})",
                                     remote_player_id,
@@ -84,6 +88,15 @@ impl IButton for ClientButton {
                                 );
                                 */
                             }
+                        }
+                        if let Some(remote_player) =
+                            self.remote_player_map.get_mut(&remote_player_id)
+                        {
+                            let mut remote_player_bind = remote_player.bind_mut();
+                            // Set position on the underlying Godot node
+                            remote_player_bind
+                                .base_mut()
+                                .set_global_position(Vector2::new(player_data.x, player_data.y));
                         }
                     }
                     ServerMessage::PlayerJoined { player_ids } => {
@@ -98,6 +111,8 @@ impl IButton for ClientButton {
                                 let remote_player_scene = remote_player_ref.clone();
                                 let mut remote_player =
                                     remote_player_scene.instantiate_as::<Player>();
+                                self.remote_player_map
+                                    .insert(remote_player_id, remote_player.clone());
                                 self.to_gd().add_child(&remote_player);
                                 let mut remote_player_bind = remote_player.bind_mut();
                                 remote_player_bind.set_player_id(remote_player_id);
@@ -140,7 +155,7 @@ impl IButton for ClientButton {
             // For example, you might want to send a heartbeat or a status update
             if let Some(player_ref) = &self.player_ref {
                 let player = player_ref.bind();
-                let position = player.base().get_position();
+                let position = player.base().get_global_position();
 
                 // do local player logic
                 // local player logic
