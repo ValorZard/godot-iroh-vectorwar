@@ -16,8 +16,8 @@ pub type PlayerId = u64;
 pub enum ServerMessage {
     Hello { player_id: u64 },
     PlayerPosition(PlayerId, PlayerPosition),
-    PlayerJoined { remote_player_ids: Vec<PlayerId> },
-    PlayerLeft { player_id: PlayerId },
+    PlayerJoined { player_ids: Vec<PlayerId> },
+    PlayerLeft { player_ids: Vec<PlayerId> },
     Quit,
 }
 

@@ -1,7 +1,13 @@
-use game_core::{client::run_client, ClientMessage, PlayerPosition, ServerMessage};
-use godot::{classes::{Button, IButton}, prelude::*};
+use game_core::{ClientMessage, PlayerPosition, ServerMessage, client::run_client};
+use godot::{
+    classes::{Button, IButton},
+    prelude::*,
+};
 
-use crate::{async_runtime::AsyncRuntime, player::{self, Player}};
+use crate::{
+    async_runtime::AsyncRuntime,
+    player::{self, Player},
+};
 
 #[derive(GodotClass)]
 #[class(base=Button)]
@@ -18,8 +24,8 @@ impl IButton for ClientButton {
     fn init(base: Base<Button>) -> Self {
         Self {
             server_receiver: None, // Initialize with None, will be set when the client starts
-            client_sender: None, // Initialize with None, will be set when the client starts
-            player_ref: None, // Reference to the player, if needed
+            client_sender: None,   // Initialize with None, will be set when the client starts
+            player_ref: None,      // Reference to the player, if needed
             base,
         }
     }
@@ -57,7 +63,6 @@ impl IButton for ClientButton {
                 }
             }
         }
-
 
         if let Some(sender) = &self.client_sender {
             // Here you can send messages to the server if needed

@@ -881,6 +881,7 @@ dependencies = [
  "async-channel",
  "game_core",
  "godot",
+ "hecs",
  "tokio",
 ]
 

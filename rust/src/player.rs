@@ -28,9 +28,7 @@ impl ISprite2D for Player {
         }
     }
 
-    fn ready(&mut self) {
-
-    }
+    fn ready(&mut self) {}
 
     fn physics_process(&mut self, delta: f64) {
         // GDScript code:

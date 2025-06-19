@@ -47,8 +47,7 @@ fn configure_server()
     Ok((server_config, cert_der))
 }
 
-pub async fn run_server()
--> Result<ChannelMap, Box<dyn Error + Send + Sync + 'static>> {
+pub async fn run_server() -> Result<ChannelMap, Box<dyn Error + Send + Sync + 'static>> {
     //console_subscriber::init();
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8080);
     let channel_map = Arc::new(Mutex::new(HashMap::<PlayerId, MessageChannels>::new()));
@@ -64,10 +63,7 @@ pub struct MessageChannels {
 }
 
 /// Runs a QUIC server bound to given address.
-pub async fn run_quinn_server(
-    addr: SocketAddr,
-    channel_map: ChannelMap,
-) {
+pub async fn run_quinn_server(addr: SocketAddr, channel_map: ChannelMap) {
     let (endpoint, _server_cert) = make_server_endpoint(addr).unwrap();
 
     while let Some(incoming_conn) = endpoint.accept().await {

@@ -22,12 +22,11 @@ impl IObject for AsyncRuntime {
             .build()
             .unwrap();
         */
-        
+
         let runtime = runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap();
-        
 
         Self {
             base,
