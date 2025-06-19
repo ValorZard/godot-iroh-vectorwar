@@ -1,8 +1,9 @@
-use game_core::{ClientMessage, PlayerPosition, ServerMessage, client::run_client};
+use game_core::{ClientMessage, PlayerId, PlayerPosition, ServerMessage, client::run_client};
 use godot::{
     classes::{Button, IButton},
     prelude::*,
 };
+use hecs::World;
 
 use crate::{
     async_runtime::AsyncRuntime,
@@ -14,6 +15,8 @@ use crate::{
 struct ClientButton {
     server_receiver: Option<async_channel::Receiver<ServerMessage>>,
     client_sender: Option<async_channel::Sender<ClientMessage>>,
+    world: World,
+    local_player_id: PlayerId,
     #[export]
     player_ref: Option<Gd<Player>>,
     base: Base<Button>,
@@ -26,6 +29,8 @@ impl IButton for ClientButton {
             server_receiver: None, // Initialize with None, will be set when the client starts
             client_sender: None,   // Initialize with None, will be set when the client starts
             player_ref: None,      // Reference to the player, if needed
+            world: World::new(),   // Initialize a new Hecs World
+            local_player_id: 0,    // Local player ID, initialized to 0
             base,
         }
     }
@@ -49,17 +54,64 @@ impl IButton for ClientButton {
         // This is where you can handle any client-related logic
         // For example, you might want to check for incoming messages from the server
         if let Some(receiver) = &self.server_receiver {
-            match receiver.try_recv() {
-                Ok(message) => {
-                    godot_print!("Received message from server: {:?}", message);
-                    // Handle the received message
-                }
-                Err(async_channel::TryRecvError::Empty) => {
-                    // No messages available, continue processing
-                }
-                Err(async_channel::TryRecvError::Closed) => {
-                    godot_print!("Server channel closed");
-                    self.server_receiver = None; // Reset the receiver if the channel is closed
+            while let Ok(message) = receiver.try_recv() {
+                match message {
+                    ServerMessage::Hello { player_id } => {
+                        self.local_player_id = player_id;
+                        self.world
+                            .spawn((self.local_player_id, PlayerPosition { x: 0.0, y: 0.0 }));
+                        godot_print!("[client] local ID: {}", player_id);
+                    }
+                    ServerMessage::PlayerPosition(remote_player_id, player_data) => {
+                        let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
+                        for (_, (id, position)) in query {
+                            if *id == remote_player_id {
+                                *position = player_data;
+                                godot_print!(
+                                    "Updated position for player {}: ({}, {})",
+                                    remote_player_id,
+                                    position.x,
+                                    position.y
+                                );
+                            }
+                        }
+                    }
+                    ServerMessage::PlayerJoined { player_ids } => {
+                        for remote_player_id in player_ids {
+                            if remote_player_id == self.local_player_id {
+                                continue; // Skip if it's the local player
+                            }
+                            godot_print!("[client] Player joined with ID: {}", remote_player_id);
+                            self.world
+                                .spawn((remote_player_id, PlayerPosition { x: 0.0, y: 0.0 }));
+                        }
+                        let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
+                        let query_vec = query.into_iter().collect::<Vec<_>>();
+                        godot_print!("[client] Current players: {:?}", query_vec);
+                    }
+                    ServerMessage::PlayerLeft { player_ids } => {
+                        for player_id in player_ids {
+                            if player_id == self.local_player_id {
+                                continue; // Skip if it's the local player
+                            }
+
+                            godot_print!("[client] Player left with ID: {}", player_id);
+                            // Remove player from the world
+                            let query = self.world.query_mut::<&PlayerId>();
+                            let mut entities_to_despawn = Vec::new();
+                            for (entity, id) in query {
+                                if *id == player_id {
+                                    entities_to_despawn.push(entity);
+                                }
+                            }
+                            for entity in entities_to_despawn {
+                                self.world.despawn(entity).unwrap();
+                            }
+                        }
+                    }
+                    ServerMessage::Quit => {
+                        godot_print!("[client] Server requested to quit");
+                    }
                 }
             }
         }
@@ -70,6 +122,18 @@ impl IButton for ClientButton {
             if let Some(player_ref) = &self.player_ref {
                 let player = player_ref.bind();
                 let position = player.base().get_position();
+
+                // do local player logic
+                // local player logic
+                let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
+                for (_, (id, world_position)) in query {
+                    if *id == self.local_player_id {
+                        world_position.x = position.x;
+                        world_position.y = position.y;
+                    }
+                }
+
+                // send player position to the server
                 let message = ClientMessage::PlayerPosition(PlayerPosition {
                     x: position.x,
                     y: position.y,
