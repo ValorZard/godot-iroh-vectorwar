@@ -8,6 +8,9 @@ use godot::prelude::*;
 pub struct Player {
     speed: f64,
     angular_speed: f64,
+    pub player_id: game_core::PlayerId,
+    #[export]
+    pub is_local: bool,
 
     base: Base<Sprite2D>,
 }
@@ -24,6 +27,8 @@ impl ISprite2D for Player {
         Self {
             speed: 400.0,
             angular_speed: std::f64::consts::PI,
+            player_id: 0,    // Default player ID, can be set later
+            is_local: true, // Default to not being local, can be set later
             base,
         }
     }
@@ -37,12 +42,14 @@ impl ISprite2D for Player {
         // var velocity = Vector2.UP.rotated(rotation) * speed
         // position += velocity * delta
 
-        let radians = (self.angular_speed * delta) as f32;
-        self.base_mut().rotate(radians);
+        if self.is_local {
+            let radians = (self.angular_speed * delta) as f32;
+            self.base_mut().rotate(radians);
 
-        let rotation = self.base().get_rotation();
-        let velocity = Vector2::UP.rotated(rotation) * self.speed as f32;
-        self.base_mut().translate(velocity * delta as f32);
+            let rotation = self.base().get_rotation();
+            let velocity = Vector2::UP.rotated(rotation) * self.speed as f32;
+            self.base_mut().translate(velocity * delta as f32);
+        }
 
         // or verbose:
         // let this = self.base_mut();
@@ -54,6 +61,12 @@ impl ISprite2D for Player {
 
 #[godot_api]
 impl Player {
+
+    #[func]
+    pub fn set_player_id(&mut self, player_id: game_core::PlayerId) {
+        self.player_id = player_id;
+    }
+
     #[func]
     fn increase_speed(&mut self, amount: f64) {
         self.speed += amount;

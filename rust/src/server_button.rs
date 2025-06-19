@@ -51,7 +51,7 @@ impl IButton for ServerButton {
             for (player_id, channel) in channel_map.iter() {
                 match channel.receiver.try_recv() {
                     Ok(message) => {
-                        godot_print!("Received message from player {}: {:?}", player_id, message);
+                        //godot_print!("Received message from player {}: {:?}", player_id, message);
                         // Handle the received message
                         match message {
                             ClientMessage::PlayerPosition(player_position) => {
@@ -61,11 +61,13 @@ impl IButton for ServerButton {
                                 for (_, (id, position)) in query {
                                     if *id == *player_id {
                                         *position = player_position;
+                                        /*
                                         godot_print!(
                                             "Player {} position: {:?}",
                                             player_id,
                                             player_position
                                         );
+                                        */
                                     }
                                 }
                             }

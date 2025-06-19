@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://c7iskwgu5aphr"]
+[gd_scene load_steps=3 format=3 uid="uid://c7iskwgu5aphr"]
 
 [ext_resource type="Texture2D" uid="uid://dcvpakna8i04d" path="res://godot-rust.png" id="1_ig7tw"]
+[ext_resource type="PackedScene" uid="uid://rf26uexeggc1" path="res://remote_player.tscn" id="2_0xm2m"]
 
 [node name="Node2D" type="Node2D"]
 
@@ -10,6 +11,7 @@ texture = ExtResource("1_ig7tw")
 
 [node name="ClientButton" type="ClientButton" parent="." node_paths=PackedStringArray("player_ref")]
 player_ref = NodePath("../Player")
+remote_player_ref = ExtResource("2_0xm2m")
 offset_left = 108.0
 offset_top = 430.0
 offset_right = 391.0

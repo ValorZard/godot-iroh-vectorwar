@@ -1,6 +1,6 @@
 use game_core::{ClientMessage, PlayerId, PlayerPosition, ServerMessage, client::run_client};
 use godot::{
-    classes::{Button, IButton},
+    classes::{Button, IButton, Sprite2D},
     prelude::*,
 };
 use hecs::World;
@@ -19,6 +19,8 @@ struct ClientButton {
     local_player_id: PlayerId,
     #[export]
     player_ref: Option<Gd<Player>>,
+    #[export]
+    remote_player_ref: Option<Gd<PackedScene>>,
     base: Base<Button>,
 }
 
@@ -29,6 +31,7 @@ impl IButton for ClientButton {
             server_receiver: None, // Initialize with None, will be set when the client starts
             client_sender: None,   // Initialize with None, will be set when the client starts
             player_ref: None,      // Reference to the player, if needed
+            remote_player_ref: None, // Reference to the remote player, if needed
             world: World::new(),   // Initialize a new Hecs World
             local_player_id: 0,    // Local player ID, initialized to 0
             base,
@@ -60,6 +63,11 @@ impl IButton for ClientButton {
                         self.local_player_id = player_id;
                         self.world
                             .spawn((self.local_player_id, PlayerPosition { x: 0.0, y: 0.0 }));
+                        if let Some(player_ref) = self.player_ref.as_mut() {
+                            let mut player_ref = player_ref.bind_mut();
+                            player_ref.set_player_id(self.local_player_id);
+                            player_ref.set_is_local(true);
+                        }
                         godot_print!("[client] local ID: {}", player_id);
                     }
                     ServerMessage::PlayerPosition(remote_player_id, player_data) => {
@@ -67,12 +75,14 @@ impl IButton for ClientButton {
                         for (_, (id, position)) in query {
                             if *id == remote_player_id {
                                 *position = player_data;
+                                /* 
                                 godot_print!(
                                     "Updated position for player {}: ({}, {})",
                                     remote_player_id,
                                     position.x,
                                     position.y
                                 );
+                                */
                             }
                         }
                     }
@@ -84,6 +94,15 @@ impl IButton for ClientButton {
                             godot_print!("[client] Player joined with ID: {}", remote_player_id);
                             self.world
                                 .spawn((remote_player_id, PlayerPosition { x: 0.0, y: 0.0 }));
+                            if let Some(remote_player_ref) = &self.remote_player_ref {
+                                let remote_player_scene = remote_player_ref.clone();
+                                let mut remote_player =
+                                    remote_player_scene.instantiate_as::<Player>();
+                                self.to_gd().add_child(&remote_player);
+                                let mut remote_player_bind = remote_player.bind_mut();
+                                remote_player_bind.set_player_id(remote_player_id);
+                                remote_player_bind.set_is_local(false);
+                            }
                         }
                         let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
                         let query_vec = query.into_iter().collect::<Vec<_>>();

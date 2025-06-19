@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://rf26uexeggc1"]
+
+[ext_resource type="Texture2D" uid="uid://dcvpakna8i04d" path="res://godot-rust.png" id="1_my1ri"]
+
+[node name="RemotePlayer" type="Player"]
+texture = ExtResource("1_my1ri")
