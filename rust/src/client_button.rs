@@ -24,6 +24,8 @@ struct ClientButton {
     #[export]
     remote_player_ref: Option<Gd<PackedScene>>,
     remote_player_map: HashMap<PlayerId, Gd<Player>>,
+    #[export]
+    remote_player_amount: i32,
     base: Base<Button>,
 }
 
@@ -38,6 +40,7 @@ impl IButton for ClientButton {
             world: World::new(),   // Initialize a new Hecs World
             local_player_id: 0,    // Local player ID, initialized to 0
             remote_player_map: HashMap::new(), // Map to keep track of remote players
+            remote_player_amount: 0, // Initialize remote player amount to 0
             base,
         }
     }
@@ -101,8 +104,10 @@ impl IButton for ClientButton {
                     }
                     ServerMessage::PlayerJoined { player_ids } => {
                         for remote_player_id in player_ids {
-                            if remote_player_id == self.local_player_id {
-                                continue; // Skip if it's the local player
+                            if remote_player_id == self.local_player_id
+                                || self.remote_player_map.contains_key(&remote_player_id)
+                            {
+                                continue; // Skip if it's the local player or if its already in the map
                             }
                             godot_print!("[client] Player joined with ID: {}", remote_player_id);
                             self.world
@@ -177,5 +182,7 @@ impl IButton for ClientButton {
                 }
             }
         }
+
+        self.remote_player_amount = self.remote_player_map.len() as i32;
     }
 }

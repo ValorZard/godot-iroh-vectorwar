@@ -76,6 +76,16 @@ impl IButton for ServerButton {
                                 self.world
                                     .spawn((player_id, PlayerPosition { x: 0.0, y: 0.0 }));
                                 new_player_vec.push(player_id);
+                                // send list of players to player who just joined
+                                let player_ids: Vec<PlayerId> =
+                                    channel_map.keys().cloned().collect();
+                                if let Some(entry) = channel_map.get(&player_id) {
+                                    entry
+                                        .sender
+                                        .clone()
+                                        .try_send(ServerMessage::PlayerJoined { player_ids })
+                                        .unwrap();
+                                }
                             }
                             ClientMessage::Quit { player_id } => {
                                 godot_print!("Player {} left", player_id);

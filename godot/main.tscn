@@ -1,9 +1,11 @@
-[gd_scene load_steps=3 format=3 uid="uid://c7iskwgu5aphr"]
+[gd_scene load_steps=4 format=3 uid="uid://c7iskwgu5aphr"]
 
+[ext_resource type="Script" uid="uid://xiitkxt8t3nd" path="res://main.gd" id="1_h2yge"]
 [ext_resource type="Texture2D" uid="uid://dcvpakna8i04d" path="res://godot-rust.png" id="1_ig7tw"]
 [ext_resource type="PackedScene" uid="uid://rf26uexeggc1" path="res://remote_player.tscn" id="2_0xm2m"]
 
 [node name="Node2D" type="Node2D"]
+script = ExtResource("1_h2yge")
 
 [node name="Player" type="Player" parent="."]
 position = Vector2(903, 491)
@@ -18,6 +20,11 @@ offset_right = 391.0
 offset_bottom = 605.0
 text = "client
 "
+
+[node name="Label" type="Label" parent="ClientButton"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
 
 [node name="ServerButton" type="ServerButton" parent="."]
 offset_left = 182.0
