@@ -32,3 +32,10 @@ offset_top = 161.0
 offset_right = 343.0
 offset_bottom = 291.0
 text = "Server"
+
+[node name="Label" type="Label" parent="ServerButton"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+
+[connection signal="pressed" from="ServerButton" to="." method="_on_server_button_pressed"]

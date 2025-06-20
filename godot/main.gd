@@ -9,3 +9,9 @@ func _ready() -> void:
 # Called every frame. 'delta' is the elapsed time since the previous frame.
 func _process(delta: float) -> void:
 	$ClientButton/Label.text = "Amount: " + str($ClientButton.remote_player_amount)
+
+
+
+
+func _on_server_button_pressed() -> void:
+	$ServerButton/Label.text = "Is Running"
