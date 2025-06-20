@@ -3,7 +3,9 @@ use rkyv::{Archive, Deserialize, Serialize};
 pub mod client;
 pub mod server;
 
-pub type PlayerId = u64;
+pub type PlayerId = String;
+// this is the default player id, used when a player has not been assigned an id yet
+pub const DEFAULT_PLAYER_ID: PlayerId = String::new();
 
 #[derive(Archive, Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[rkyv(
@@ -14,14 +16,14 @@ pub type PlayerId = u64;
     derive(Debug),
 )]
 pub enum ServerMessage {
-    Hello { player_id: u64 },
+    Hello { player_id:  PlayerId },
     PlayerPosition(PlayerId, PlayerPosition),
     PlayerJoined { player_ids: Vec<PlayerId> },
     PlayerLeft { player_ids: Vec<PlayerId> },
     Quit,
 }
 
-#[derive(Archive, Deserialize, Serialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Archive, Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[rkyv(
     // This will generate a PartialEq impl between our unarchived
     // and archived types

@@ -74,8 +74,8 @@ impl IButton for ServerButton {
                             ClientMessage::PlayerJoined { player_id } => {
                                 godot_print!("Player {} joined", player_id);
                                 self.world
-                                    .spawn((player_id, PlayerPosition { x: 0.0, y: 0.0 }));
-                                new_player_vec.push(player_id);
+                                    .spawn((player_id.clone(), PlayerPosition { x: 0.0, y: 0.0 }));
+                                new_player_vec.push(player_id.clone());
                                 // send list of players to player who just joined
                                 let player_ids: Vec<PlayerId> =
                                     channel_map.keys().cloned().collect();
@@ -89,7 +89,7 @@ impl IButton for ServerButton {
                             }
                             ClientMessage::Quit { player_id } => {
                                 godot_print!("Player {} left", player_id);
-                                leaving_player_vec.push(player_id);
+                                leaving_player_vec.push(player_id.clone());
                                 // remove entities associated with this player
                                 let query = self.world.query_mut::<&PlayerId>();
                                 let mut entities_to_despawn = Vec::new();
@@ -119,7 +119,7 @@ impl IButton for ServerButton {
                 .world
                 .query::<(&PlayerId, &PlayerPosition)>()
                 .iter()
-                .map(|(entity, (id, position))| ServerMessage::PlayerPosition(*id, *position))
+                .map(|(entity, (id, position))| ServerMessage::PlayerPosition(id.clone(), *position))
                 .collect::<Vec<ServerMessage>>();
 
             for (player_id, message_channels) in channel_map.iter() {

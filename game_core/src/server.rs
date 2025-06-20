@@ -76,7 +76,7 @@ pub async fn run_quinn_server(addr: SocketAddr, channel_map: ChannelMap) {
         let (mut send_stream, mut recv_stream) = conn.open_bi().await.unwrap();
         println!("[server] opened bidirectional stream");
         // Create a new player ID for this connection
-        let player_id = conn.stable_id() as PlayerId;
+        let player_id = conn.stable_id().to_string();
         // channel to send from server to client
         let (server_sender, server_receiver) = async_channel::unbounded::<ServerMessage>();
         // channel to send from client to server
@@ -85,7 +85,7 @@ pub async fn run_quinn_server(addr: SocketAddr, channel_map: ChannelMap) {
         {
             let mut map = channel_map.lock().unwrap();
             map.insert(
-                player_id,
+                player_id.clone(),
                 MessageChannels {
                     receiver: client_receiver,
                     sender: server_sender,
@@ -94,7 +94,7 @@ pub async fn run_quinn_server(addr: SocketAddr, channel_map: ChannelMap) {
         }
 
         // say hello to the client for the client to accept the connection
-        let hello_message = ServerMessage::Hello { player_id };
+        let hello_message = ServerMessage::Hello { player_id: player_id.clone() };
         let serialized_message = rkyv::to_bytes::<rancor::Error>(&hello_message).unwrap();
         send_stream
             .write_all(&serialized_message)
@@ -103,7 +103,7 @@ pub async fn run_quinn_server(addr: SocketAddr, channel_map: ChannelMap) {
 
         // send message to sync code that we have new player
         client_sender
-            .send(ClientMessage::PlayerJoined { player_id })
+            .send(ClientMessage::PlayerJoined { player_id: player_id.clone() })
             .await
             .unwrap();
 
@@ -127,7 +127,7 @@ pub async fn run_quinn_server(addr: SocketAddr, channel_map: ChannelMap) {
 
                         // special edge case for quitting
                         if let Ok(()) = client_quit_sender
-                            .send(ClientMessage::Quit { player_id })
+                            .send(ClientMessage::Quit { player_id: player_id.clone() })
                             .await
                         {
                             println!("[server] sent quit message to client");

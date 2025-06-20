@@ -1,5 +1,6 @@
 use game_core::client::run_client;
 use game_core::server::run_server;
+use game_core::DEFAULT_PLAYER_ID;
 use godot::classes::{Input, Sprite2D};
 use godot::prelude::*;
 
@@ -27,7 +28,7 @@ impl ISprite2D for Player {
         Self {
             speed: 400.0,
             angular_speed: std::f64::consts::PI,
-            player_id: 0,   // Default player ID, can be set later
+            player_id: DEFAULT_PLAYER_ID,   // Default player ID, can be set later
             is_local: true, // Default to not being local, can be set later
             base,
         }
