@@ -44,7 +44,7 @@ impl IButton for ServerButton {
         }
     }
 
-    fn process(&mut self, delta: f64) {
+    fn process(&mut self, _delta: f64) {
         // This is where you can handle any server-related logic
         // For example, you might want to check for incoming connections or messages
         if let Some(channel_map) = &self.channel_map {
@@ -123,7 +123,7 @@ impl IButton for ServerButton {
                 .world
                 .query::<(&PlayerId, &PlayerPosition)>()
                 .iter()
-                .map(|(entity, (id, position))| {
+                .map(|(_entity, (id, position))| {
                     ServerMessage::PlayerPosition(id.clone(), *position)
                 })
                 .collect::<Vec<ServerMessage>>();

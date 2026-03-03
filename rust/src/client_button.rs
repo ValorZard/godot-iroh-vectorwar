@@ -1,19 +1,16 @@
-use std::{collections::HashMap, hash::Hash};
+use std::collections::HashMap;
 
 use game_core::{
     ClientMessage, DEFAULT_PLAYER_ID, PlayerId, PlayerPosition, ServerMessage, client::run_client,
 };
 use godot::{
-    classes::{Button, IButton, Sprite2D},
+    classes::{Button, IButton},
     prelude::*,
 };
 use hecs::World;
 use tokio::sync::watch;
 
-use crate::{
-    async_runtime::AsyncRuntime,
-    player::{self, Player},
-};
+use crate::{async_runtime::AsyncRuntime, player::Player};
 
 #[derive(GodotClass)]
 #[class(base=Button)]
@@ -71,7 +68,7 @@ impl IButton for ClientButton {
         }
     }
 
-    fn process(&mut self, delta: f64) {
+    fn process(&mut self, _delta: f64) {
         // This is where you can handle any client-related logic
         // For example, you might want to check for incoming messages from the server
         if let Some(receiver) = &self.server_receiver {
@@ -87,7 +84,7 @@ impl IButton for ClientButton {
                         if let Some(player_ref) = self.player_ref.as_mut() {
                             let mut player_ref = player_ref.bind_mut();
                             player_ref.set_player_id(self.local_player_id.clone());
-                            player_ref.set_is_local(true);
+                            player_ref.is_local = true;
                         }
                         // TODO: figure out why this never gets called
                         godot_print!("[client] local ID: {}", self.local_player_id);
@@ -138,7 +135,7 @@ impl IButton for ClientButton {
                                 self.to_gd().add_child(&remote_player);
                                 let mut remote_player_bind = remote_player.bind_mut();
                                 remote_player_bind.set_player_id(remote_player_id);
-                                remote_player_bind.set_is_local(false);
+                                remote_player_bind.is_local = false;
                             }
                         }
                         let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
@@ -221,4 +218,3 @@ impl ClientButton {
         GString::from(&self.local_player_id)
     }
 }
-    

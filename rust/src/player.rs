@@ -1,6 +1,4 @@
 use game_core::DEFAULT_PLAYER_ID;
-use game_core::client::run_client;
-use game_core::server::run_server;
 use godot::classes::{Input, Sprite2D};
 use godot::prelude::*;
 
@@ -17,8 +15,6 @@ pub struct Player {
 }
 
 use godot::classes::ISprite2D;
-
-use crate::async_runtime::AsyncRuntime;
 
 #[godot_api]
 impl ISprite2D for Player {

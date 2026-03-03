@@ -1,6 +1,4 @@
-use godot::{classes::Engine, prelude::*};
-
-use crate::async_runtime::AsyncRuntime;
+use godot::prelude::*;
 
 struct RustExtension;
 
