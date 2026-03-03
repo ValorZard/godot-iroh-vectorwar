@@ -3,7 +3,7 @@ use godot::{
     classes::{Button, IButton},
     prelude::*,
 };
-use hecs::World;
+use hecs::{Entity, World};
 use tokio::task::JoinSet;
 
 use crate::async_runtime::AsyncRuntime;
@@ -62,7 +62,7 @@ impl IButton for ServerButton {
                                 // Update player position in the world
                                 let query =
                                     self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
-                                for (_, (id, position)) in query {
+                                for (id, position) in query {
                                     if *id == *player_id {
                                         *position = player_position;
                                         /*
@@ -95,7 +95,7 @@ impl IButton for ServerButton {
                                 godot_print!("Player {} left", player_id);
                                 leaving_player_vec.push(player_id.clone());
                                 // remove entities associated with this player
-                                let query = self.world.query_mut::<&PlayerId>();
+                                let query = self.world.query_mut::<(Entity, &PlayerId)>();
                                 let mut entities_to_despawn = Vec::new();
                                 for (entity, id) in query {
                                     if *id == player_id {
@@ -123,7 +123,7 @@ impl IButton for ServerButton {
                 .world
                 .query::<(&PlayerId, &PlayerPosition)>()
                 .iter()
-                .map(|(_entity, (id, position))| {
+                .map(|(id, position)| {
                     ServerMessage::PlayerPosition(id.clone(), *position)
                 })
                 .collect::<Vec<ServerMessage>>();
@@ -155,11 +155,11 @@ impl IButton for ServerButton {
                 // Send leaving player messages
                 if !leaving_player_vec.is_empty() {
                     let leaving_player_message = ServerMessage::PlayerLeft {
-                        player_ids: new_player_vec.clone(),
+                        player_ids: leaving_player_vec.clone(),
                     };
                     if let Err(e) = server_sender.try_send(leaving_player_message) {
                         godot_print!(
-                            "Failed to send new player message to player {}: {}",
+                            "Failed to send leaving player message to player {}: {}",
                             player_id,
                             e
                         );

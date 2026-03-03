@@ -7,7 +7,7 @@ use godot::{
     classes::{Button, IButton},
     prelude::*,
 };
-use hecs::World;
+use hecs::{Entity, World};
 use tokio::sync::watch;
 
 use crate::{async_runtime::AsyncRuntime, player::Player};
@@ -91,7 +91,7 @@ impl IButton for ClientButton {
                     }
                     ServerMessage::PlayerPosition(remote_player_id, player_data) => {
                         let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
-                        for (_, (id, position)) in query {
+                        for (id, position) in query {
                             if *id == remote_player_id {
                                 *position = player_data;
                                 /*
@@ -150,7 +150,7 @@ impl IButton for ClientButton {
 
                             godot_print!("[client] Player left with ID: {}", player_id);
                             // Remove player from the world
-                            let query = self.world.query_mut::<&PlayerId>();
+                            let query = self.world.query_mut::<(Entity, &PlayerId)>();
                             let mut entities_to_despawn = Vec::new();
                             for (entity, id) in query {
                                 if *id == player_id {
@@ -179,7 +179,7 @@ impl IButton for ClientButton {
                 // do local player logic
                 // local player logic
                 let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
-                for (_, (id, world_position)) in query {
+                for (id, world_position) in query {
                     if *id == self.local_player_id {
                         world_position.x = position.x;
                         world_position.y = position.y;
