@@ -110,32 +110,11 @@ pub fn serialize_client_message(
     }
 }
 
-async fn connect_channel_to_server(
-    connection: Connection,
-) -> Result<
-    (
-        watch::Sender<bool>,
-        async_channel::Receiver<ReliableServerMessage>,
-        async_channel::Sender<ReliableClientMessage>,
-        tokio::task::JoinSet<()>,
-    ),
-    Box<dyn Error + Send + Sync + 'static>,
-> {
-    let (cancel_sender, cancel_receiver) = watch::channel(false);
-    println!("[client] connecting channel to server");
-    let (mut send_stream, mut recv_stream) = connection
-        .accept_bi()
-        .await
-        .map_err(|e| format!("Failed to accept bidirectional stream: {}", e))?;
-    println!("[client] accepted bidirectional stream");
-    // Create a channel for sending message to the server and receiving messages from it.
-    let (server_sender, server_receiver) = async_channel::unbounded::<ReliableServerMessage>();
-    // Create a channel for receiving messages from the tokio task to sync code
-    let (client_sender, client_receiver) = async_channel::unbounded::<ReliableClientMessage>();
-    // return handle to to the connection tasks so we can drop it later
-    let mut join_set = tokio::task::JoinSet::new();
-    let cancel_rev = cancel_receiver.clone();
-    join_set.spawn(async move {
+async fn read_reliable_server_message(
+    mut recv_stream: quinn::RecvStream,
+    cancel_rev: watch::Receiver<bool>,
+    server_message_sender: async_channel::Sender<ReliableServerMessage>,
+) {
         println!("[client] start receiving messages from server");
         loop {
             // break loop if the cancel receiver is set to true
@@ -170,7 +149,7 @@ async fn connect_channel_to_server(
                 //println!("bytes read: {:?}", buf);
                 let server_message =
                     rkyv::from_bytes::<ReliableServerMessage, rancor::Error>(&buf).unwrap();
-                if let Err(send_error) = server_sender.send(server_message).await {
+                if let Err(send_error) = server_message_sender.send(server_message).await {
                     println!(
                         "[client] failed to send message to server receiver: {}",
                         send_error
@@ -183,10 +162,13 @@ async fn connect_channel_to_server(
                 );
             }
         }
-    });
+}
 
-    let cancel_rev = cancel_receiver.clone();
-    join_set.spawn(async move {
+async fn send_reliable_client_message(
+    mut send_stream: quinn::SendStream,
+    cancel_rev: watch::Receiver<bool>,
+    client_message_receiver: async_channel::Receiver<ReliableClientMessage>,
+) {
         println!(
             "[client] start sending messages to server, stream id: {}",
             send_stream.id()
@@ -200,7 +182,7 @@ async fn connect_channel_to_server(
                 break;
             }
             // get message from sync client code
-            while let Ok(message) = client_receiver.recv().await {
+            while let Ok(message) = client_message_receiver.recv().await {
                 let serialized_message = match serialize_client_message(&message) {
                     Ok(bytes) => bytes,
                     Err(e) => {
@@ -215,25 +197,50 @@ async fn connect_channel_to_server(
                 }
             }
         }
-    });
+}
 
-    Ok((cancel_sender, server_receiver, client_sender, join_set))
+async fn connect_client_to_server(
+    connection: Connection,
+) -> Result<
+    Client,
+    Box<dyn Error + Send + Sync + 'static>,
+> {
+    let (cancel_sender, cancel_receiver) = watch::channel(false);
+    println!("[client] connecting channel to server");
+    let (mut send_stream, mut recv_stream) = connection
+        .accept_bi()
+        .await
+        .map_err(|e| format!("Failed to accept bidirectional stream: {}", e))?;
+    println!("[client] accepted bidirectional stream");
+    // Create a channel for sending message to the server and receiving messages from it.
+    let (reliable_server_sender, reliable_server_receiver) = async_channel::unbounded::<ReliableServerMessage>();
+    // Create a channel for receiving messages from the tokio task to sync code
+    let (reliable_client_sender, reliable_client_receiver) = async_channel::unbounded::<ReliableClientMessage>();
+    // return handle to to the connection tasks so we can drop it later
+    let mut join_set = tokio::task::JoinSet::new();
+    let cancel_rev = cancel_receiver.clone();
+    join_set.spawn(read_reliable_server_message(recv_stream, cancel_rev, reliable_server_sender));
+
+    let cancel_rev = cancel_receiver.clone();
+    join_set.spawn(send_reliable_client_message(send_stream, cancel_rev, reliable_client_receiver));
+
+    Ok(Client {
+        cancel_sender,
+        server_receiver: reliable_server_receiver,
+        client_sender: reliable_client_sender,
+        join_set,
+        local_player_id: PlayerId::default(),
+    })
 }
 
 pub async fn run_client() -> Result<
-    (
-        watch::Sender<bool>,
-        async_channel::Receiver<ReliableServerMessage>,
-        async_channel::Sender<ReliableClientMessage>,
-        tokio::task::JoinSet<()>,
-    ),
+    Client,
     Box<dyn Error + Send + Sync + 'static>,
 > {
     let server_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8080);
     let (endpoint, connection) = connect_to_server(server_address).await?;
-    let (cancel_sender, server_receiver, client_sender, join_set) =
-        connect_channel_to_server(connection).await?;
-    Ok((cancel_sender, server_receiver, client_sender, join_set))
+    let client = connect_client_to_server(connection).await?;
+    Ok(client)
 }
 
 pub struct Client {

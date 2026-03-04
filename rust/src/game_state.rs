@@ -51,20 +51,14 @@ impl GameState {
     #[func]
     pub fn start_client(&mut self, player_template: Gd<PackedScene>) -> Option<Gd<Player>> {
         godot_print!("starting client");
-        if let Ok((cancel_sender, server_receiver, client_sender, join_set)) =
+        if let Ok(client) =
             AsyncRuntime::block_on(run_client())
         {
             godot_print!("client running");
             self.player_template = Some(player_template.clone());
             let player_ref = player_template.instantiate_as::<Player>();
             self.network_state = NetworkState::ClientConnection(
-                Client {
-                    cancel_sender,
-                    server_receiver,
-                    client_sender,
-                    join_set,
-                    local_player_id: game_core::DEFAULT_PLAYER_ID,
-                },
+                client,
                 player_ref.clone(),
             );
             Some(player_ref)
