@@ -4,7 +4,7 @@ use tokio::sync::watch;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-use crate::{ClientMessage, MessageSize, PlayerId, ServerMessage};
+use crate::{ReliableClientMessage, MessageSize, PlayerId, ReliableServerMessage};
 use quinn::crypto::rustls::QuicClientConfig;
 use quinn::{
     ClientConfig, Connection, Endpoint,
@@ -93,7 +93,7 @@ impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
 }
 
 pub fn serialize_client_message(
-    message: &ClientMessage,
+    message: &ReliableClientMessage,
 ) -> Result<Vec<u8>, Box<dyn Error + Send + Sync + 'static>> {
     let serialized_message = rkyv::to_bytes::<rancor::Error>(message);
     match serialized_message {
@@ -115,8 +115,8 @@ async fn connect_channel_to_server(
 ) -> Result<
     (
         watch::Sender<bool>,
-        async_channel::Receiver<ServerMessage>,
-        async_channel::Sender<ClientMessage>,
+        async_channel::Receiver<ReliableServerMessage>,
+        async_channel::Sender<ReliableClientMessage>,
         tokio::task::JoinSet<()>,
     ),
     Box<dyn Error + Send + Sync + 'static>,
@@ -129,9 +129,9 @@ async fn connect_channel_to_server(
         .map_err(|e| format!("Failed to accept bidirectional stream: {}", e))?;
     println!("[client] accepted bidirectional stream");
     // Create a channel for sending message to the server and receiving messages from it.
-    let (server_sender, server_receiver) = async_channel::unbounded::<ServerMessage>();
+    let (server_sender, server_receiver) = async_channel::unbounded::<ReliableServerMessage>();
     // Create a channel for receiving messages from the tokio task to sync code
-    let (client_sender, client_receiver) = async_channel::unbounded::<ClientMessage>();
+    let (client_sender, client_receiver) = async_channel::unbounded::<ReliableClientMessage>();
     // return handle to to the connection tasks so we can drop it later
     let mut join_set = tokio::task::JoinSet::new();
     let cancel_rev = cancel_receiver.clone();
@@ -169,7 +169,7 @@ async fn connect_channel_to_server(
             if let Ok(()) = recv_stream.read_exact(&mut buf).await {
                 //println!("bytes read: {:?}", buf);
                 let server_message =
-                    rkyv::from_bytes::<ServerMessage, rancor::Error>(&buf).unwrap();
+                    rkyv::from_bytes::<ReliableServerMessage, rancor::Error>(&buf).unwrap();
                 if let Err(send_error) = server_sender.send(server_message).await {
                     println!(
                         "[client] failed to send message to server receiver: {}",
@@ -223,8 +223,8 @@ async fn connect_channel_to_server(
 pub async fn run_client() -> Result<
     (
         watch::Sender<bool>,
-        async_channel::Receiver<ServerMessage>,
-        async_channel::Sender<ClientMessage>,
+        async_channel::Receiver<ReliableServerMessage>,
+        async_channel::Sender<ReliableClientMessage>,
         tokio::task::JoinSet<()>,
     ),
     Box<dyn Error + Send + Sync + 'static>,
@@ -238,8 +238,8 @@ pub async fn run_client() -> Result<
 
 pub struct Client {
     pub cancel_sender: watch::Sender<bool>,
-    pub server_receiver: async_channel::Receiver<ServerMessage>,
-    pub client_sender: async_channel::Sender<ClientMessage>,
+    pub server_receiver: async_channel::Receiver<ReliableServerMessage>,
+    pub client_sender: async_channel::Sender<ReliableClientMessage>,
     pub join_set: tokio::task::JoinSet<()>,
     pub local_player_id: PlayerId,
 }

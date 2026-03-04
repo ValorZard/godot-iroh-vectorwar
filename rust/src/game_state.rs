@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use game_core::{
-    ClientMessage, DEFAULT_PLAYER_ID, PlayerId, PlayerPosition, ServerMessage,
+    ReliableClientMessage, DEFAULT_PLAYER_ID, PlayerId, PlayerPosition, ReliableServerMessage,
     client::{Client, run_client},
     server::{self, Server, run_server},
 };
@@ -84,7 +84,7 @@ impl GameState {
             while let Ok(message) = server_receiver.try_recv() {
                 //godot_print!("Received message from server: {:?}", message);
                 match message {
-                    ServerMessage::Hello { player_id } => {
+                    ReliableServerMessage::Hello { player_id } => {
                         client.local_player_id = player_id;
                         self.world.spawn((
                             client.local_player_id.clone(),
@@ -98,7 +98,7 @@ impl GameState {
                         self.remote_player_map
                             .insert(client.local_player_id.clone(), player_ref.to_gd());
                     }
-                    ServerMessage::PlayerPosition(remote_player_id, player_data) => {
+                    ReliableServerMessage::PlayerPosition(remote_player_id, player_data) => {
                         // for now, ignore if updating local player
                         if remote_player_id == client.local_player_id {
                             continue;
@@ -127,7 +127,7 @@ impl GameState {
                                 .set_global_position(Vector2::new(player_data.x, player_data.y));
                         }
                     }
-                    ServerMessage::PlayerJoined { player_ids } => {
+                    ReliableServerMessage::PlayerJoined { player_ids } => {
                         let local_player_id = client.local_player_id.clone();
                         for remote_player_id in player_ids {
                             if remote_player_id == local_player_id
@@ -159,7 +159,7 @@ impl GameState {
                         let query_vec = query.into_iter().collect::<Vec<_>>();
                         godot_print!("[client] Current players: {:?}", query_vec);
                     }
-                    ServerMessage::PlayerLeft { player_ids } => {
+                    ReliableServerMessage::PlayerLeft { player_ids } => {
                         for player_id in player_ids {
                             if player_id == client.local_player_id {
                                 continue; // Skip if it's the local player
@@ -187,7 +187,7 @@ impl GameState {
                             }
                         }
                     }
-                    ServerMessage::Quit => {
+                    ReliableServerMessage::Quit => {
                         godot_print!("[client] Server requested to quit");
                     }
                 }
@@ -207,7 +207,7 @@ impl GameState {
                 }
 
                 // Send position to the server
-                let message = ClientMessage::PlayerPosition(PlayerPosition {
+                let message = ReliableClientMessage::PlayerPosition(PlayerPosition {
                     x: position.x,
                     y: position.y,
                 });
@@ -231,12 +231,12 @@ impl GameState {
             let mut new_player_vec = Vec::<PlayerId>::new();
             let mut leaving_player_vec = Vec::<PlayerId>::new();
             for (player_id, channel) in channel_map.iter() {
-                match channel.receiver.try_recv() {
+                match channel.reliable_receiver.try_recv() {
                     Ok(message) => {
                         //godot_print!("Received message from player {}: {:?}", player_id, message);
                         // Handle the received message
                         match message {
-                            ClientMessage::PlayerPosition(player_position) => {
+                            ReliableClientMessage::PlayerPosition(player_position) => {
                                 // Update player position in the world
                                 let query =
                                     self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
@@ -253,7 +253,7 @@ impl GameState {
                                     }
                                 }
                             }
-                            ClientMessage::PlayerJoined { player_id } => {
+                            ReliableClientMessage::PlayerJoined { player_id } => {
                                 godot_print!("Player {} joined", player_id);
                                 self.world
                                     .spawn((player_id.clone(), PlayerPosition { x: 0.0, y: 0.0 }));
@@ -263,13 +263,13 @@ impl GameState {
                                     channel_map.keys().cloned().collect();
                                 if let Some(entry) = channel_map.get(&player_id) {
                                     entry
-                                        .sender
+                                        .reliable_sender
                                         .clone()
-                                        .try_send(ServerMessage::PlayerJoined { player_ids })
+                                        .try_send(ReliableServerMessage::PlayerJoined { player_ids })
                                         .unwrap();
                                 }
                             }
-                            ClientMessage::Quit { player_id } => {
+                            ReliableClientMessage::Quit { player_id } => {
                                 godot_print!("Player {} left", player_id);
                                 leaving_player_vec.push(player_id.clone());
                                 // remove entities associated with this player
@@ -301,12 +301,12 @@ impl GameState {
                 .world
                 .query::<(&PlayerId, &PlayerPosition)>()
                 .iter()
-                .map(|(id, position)| ServerMessage::PlayerPosition(id.clone(), *position))
-                .collect::<Vec<ServerMessage>>();
+                .map(|(id, position)| ReliableServerMessage::PlayerPosition(id.clone(), *position))
+                .collect::<Vec<ReliableServerMessage>>();
 
             for (player_id, message_channels) in channel_map.iter() {
                 // Get player position in the world
-                let server_sender = &message_channels.sender;
+                let server_sender = &message_channels.reliable_sender;
                 // send game data to each player
                 for game_data_message in &game_data {
                     // Send player position to the client
@@ -317,7 +317,7 @@ impl GameState {
                 // Send new player messages
                 if !new_player_vec.is_empty() {
                     // send new player message to all players
-                    let new_player_message = ServerMessage::PlayerJoined {
+                    let new_player_message = ReliableServerMessage::PlayerJoined {
                         player_ids: new_player_vec.clone(),
                     };
                     if let Err(e) = server_sender.try_send(new_player_message) {
@@ -330,7 +330,7 @@ impl GameState {
                 }
                 // Send leaving player messages
                 if !leaving_player_vec.is_empty() {
-                    let leaving_player_message = ServerMessage::PlayerLeft {
+                    let leaving_player_message = ReliableServerMessage::PlayerLeft {
                         player_ids: leaving_player_vec.clone(),
                     };
                     if let Err(e) = server_sender.try_send(leaving_player_message) {

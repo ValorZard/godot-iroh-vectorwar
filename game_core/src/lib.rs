@@ -15,13 +15,19 @@ pub const DEFAULT_PLAYER_ID: PlayerId = String::new();
     // Derives can be passed through to the generated type:
     derive(Debug),
 )]
-pub enum ServerMessage {
+pub enum ReliableServerMessage {
     Hello { player_id: PlayerId },
-    PlayerPosition(PlayerId, PlayerPosition),
     PlayerJoined { player_ids: Vec<PlayerId> },
+    PlayerPosition(PlayerId, PlayerPosition),
     PlayerLeft { player_ids: Vec<PlayerId> },
     Quit,
 }
+
+/*
+pub enum UnreliableServerMessage {
+    PlayerPosition(PlayerId, PlayerPosition),
+}
+*/
 
 #[derive(Archive, Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[rkyv(
@@ -31,11 +37,17 @@ pub enum ServerMessage {
     // Derives can be passed through to the generated type:
     derive(Debug),
 )]
-pub enum ClientMessage {
+pub enum ReliableClientMessage {
     PlayerJoined { player_id: PlayerId },
     PlayerPosition(PlayerPosition),
     Quit { player_id: PlayerId },
 }
+
+/*
+pub enum UnreliableClientMessage {
+    PlayerPosition(PlayerPosition),
+}
+*/
 
 pub const MAX_PACKET_SIZE: usize = 1024;
 
