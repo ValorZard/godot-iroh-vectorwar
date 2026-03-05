@@ -67,6 +67,11 @@ impl GameState {
     #[func]
     pub fn poll_client(&mut self) {
         if let NetworkState::ClientConnection(client, player_ref) = &mut self.network_state {
+            // Drain log messages from async tasks
+            while let Ok(log_msg) = client.log_receiver.try_recv() {
+                godot_print!("{}", log_msg);
+            }
+
             // This is where you can handle any client-related logic
             // For example, you might want to check for incoming messages from the server
             let mut players_to_signal: Vec<Gd<Player>> = Vec::new();

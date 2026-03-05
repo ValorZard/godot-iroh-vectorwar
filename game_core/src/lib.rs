@@ -80,3 +80,10 @@ pub type MessageSize = [u8; 4]; // convert a u32 (the size of the message) to by
 
 // Be careful with this. Too many concurrent streams and the client will freeze
 pub const UNIDIRECTIONAL_STREAM_LIMIT: VarInt = VarInt::from_u32(128);
+
+async fn log(log_sender: &LogSender, msg: String) {
+    let _ = log_sender.try_send(msg);
+}
+
+pub type LogSender = async_channel::Sender<String>;
+pub type LogReceiver = async_channel::Receiver<String>;
