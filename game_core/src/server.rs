@@ -10,10 +10,12 @@ use std::{
 };
 
 use crate::{
-    DELIMITER, LogSender, MessageSize, PlayerId, ReliableClientMessage, ReliableServerMessage, UNIDIRECTIONAL_STREAM_LIMIT, UnreliableClientMessage, UnreliableServerMessage, log
+    DELIMITER, LogSender, MessageSize, PlayerId, ReliableClientMessage, ReliableServerMessage,
+    UNIDIRECTIONAL_STREAM_LIMIT, UnreliableClientMessage, UnreliableServerMessage, log,
 };
 use quinn::{
-    Endpoint, ServerConfig, VarInt, rustls::{self, pki_types::PrivatePkcs8KeyDer}
+    Endpoint, ServerConfig, VarInt,
+    rustls::{self, pki_types::PrivatePkcs8KeyDer},
 };
 use rkyv::rancor;
 use rustls::pki_types::CertificateDer;
@@ -114,7 +116,12 @@ pub async fn run_reliable_server_send_stream(
 ) {
     'sending_loop: loop {
         if *cancel_recv.borrow() {
-            log(&log_sender, "[server] cancel receiver is set to true, stopping sending messages to client".into()).await;
+            log(
+                &log_sender,
+                "[server] cancel receiver is set to true, stopping sending messages to client"
+                    .into(),
+            )
+            .await;
             break 'sending_loop;
         }
         // get message from sync server code
@@ -124,7 +131,11 @@ pub async fn run_reliable_server_send_stream(
                 serialize_reliable_server_message(&message).expect("Failed to serialize message");
             // then send the serialized message
             if let Err(e) = send_stream.write_all(&serialized_message).await {
-                log(&log_sender, format!("[server] failed to send message: {:?}, {e}", message)).await;
+                log(
+                    &log_sender,
+                    format!("[server] failed to send message: {:?}, {e}", message),
+                )
+                .await;
 
                 // special edge case for quitting
                 if let Ok(()) = reliable_client_sender
@@ -146,10 +157,22 @@ pub async fn run_reliable_server_recv_stream(
     reliable_client_sender: async_channel::Sender<ReliableClientMessage>,
     log_sender: LogSender,
 ) {
-    log(&log_sender, format!("[server] (loop) waiting for messages from client, stream id: {}", recv_stream.id())).await;
+    log(
+        &log_sender,
+        format!(
+            "[server] (loop) waiting for messages from client, stream id: {}",
+            recv_stream.id()
+        ),
+    )
+    .await;
     'receive_loop: loop {
         if *cancel_recv.borrow() {
-            log(&log_sender, "[server] cancel receiver is set to true, stopping receiving messages from client".into()).await;
+            log(
+                &log_sender,
+                "[server] cancel receiver is set to true, stopping receiving messages from client"
+                    .into(),
+            )
+            .await;
             break 'receive_loop;
         }
 
@@ -158,13 +181,21 @@ pub async fn run_reliable_server_recv_stream(
         // first read the delimiter
         let mut delimiter_buf = [0; 1];
         if let Err(e) = recv_stream.read_exact(&mut delimiter_buf).await {
-            log(&log_sender, format!("[server] failed to read delimiter: {e}")).await;
+            log(
+                &log_sender,
+                format!("[server] failed to read delimiter: {e}"),
+            )
+            .await;
             // If we fail to read the delimiter, it means the client has disconnected
             break 'receive_loop;
         }
 
         if delimiter_buf != DELIMITER {
-            log(&log_sender, format!("[server] received invalid delimiter: {:?}", delimiter_buf)).await;
+            log(
+                &log_sender,
+                format!("[server] received invalid delimiter: {:?}", delimiter_buf),
+            )
+            .await;
             continue 'receive_loop;
         }
 
@@ -192,8 +223,19 @@ async fn read_unreliable_client_message(
     unreliable_message_sender: async_channel::Sender<UnreliableClientMessage>,
     log_sender: LogSender,
 ) {
-    log(&log_sender, format!("[server] (loop) waiting for unreliable messages from client, connection id: {}", connection.stable_id())).await;
-    log(&log_sender, "[server] start receiving unreliable messages from client".into()).await;
+    log(
+        &log_sender,
+        format!(
+            "[server] (loop) waiting for unreliable messages from client, connection id: {}",
+            connection.stable_id()
+        ),
+    )
+    .await;
+    log(
+        &log_sender,
+        "[server] start receiving unreliable messages from client".into(),
+    )
+    .await;
     'incoming_loop: loop {
         match connection.accept_uni().await {
             Ok(mut recv_stream) => {
@@ -208,11 +250,19 @@ async fn read_unreliable_client_message(
                 // Read the delimiter first (to see that our frame has started)
                 let mut delimiter_buf = [0u8; 1];
                 if let Err(e) = recv_stream.read_exact(&mut delimiter_buf).await {
-                    log(&log_sender, format!("[server] failed to read delimiter: {e}")).await;
+                    log(
+                        &log_sender,
+                        format!("[server] failed to read delimiter: {e}"),
+                    )
+                    .await;
                     continue;
                 }
                 if delimiter_buf != crate::DELIMITER {
-                    log(&log_sender, format!("[server] received invalid delimiter: {:?}", delimiter_buf)).await;
+                    log(
+                        &log_sender,
+                        format!("[server] received invalid delimiter: {:?}", delimiter_buf),
+                    )
+                    .await;
                     continue;
                 }
                 // Read the size of the message
@@ -229,15 +279,33 @@ async fn read_unreliable_client_message(
                     let client_message =
                         rkyv::from_bytes::<UnreliableClientMessage, rancor::Error>(&buf).unwrap();
                     if let Err(send_error) = unreliable_message_sender.send(client_message).await {
-                        log(&log_sender, format!("[server] failed to send message to server receiver: {}", send_error)).await;
+                        log(
+                            &log_sender,
+                            format!(
+                                "[server] failed to send message to server receiver: {}",
+                                send_error
+                            ),
+                        )
+                        .await;
                     }
                 } else {
-                    log(&log_sender, format!("[server] failed to receive message from client, stream id: {}", recv_stream.id())).await;
+                    log(
+                        &log_sender,
+                        format!(
+                            "[server] failed to receive message from client, stream id: {}",
+                            recv_stream.id()
+                        ),
+                    )
+                    .await;
                 }
                 recv_stream.stop(VarInt::from_u32(0)).ok();
             }
             Err(e) => {
-                log(&log_sender, format!("[server] failed to accept unidirectional stream: {}", e)).await;
+                log(
+                    &log_sender,
+                    format!("[server] failed to accept unidirectional stream: {}", e),
+                )
+                .await;
                 break 'incoming_loop;
             }
         }
@@ -250,11 +318,20 @@ async fn send_unreliable_server_message(
     unreliable_server_receiver: async_channel::Receiver<UnreliableServerMessage>,
     log_sender: LogSender,
 ) {
-    log(&log_sender, "[server] start sending unreliable messages to clients".into()).await;
+    log(
+        &log_sender,
+        "[server] start sending unreliable messages to clients".into(),
+    )
+    .await;
     'outgoing_loop: loop {
         // break loop if the cancel receiver is set to true
         if *cancel_recv.borrow() {
-            log(&log_sender, "[server] cancel receiver is set to true, stopping sending messages to client".into()).await;
+            log(
+                &log_sender,
+                "[server] cancel receiver is set to true, stopping sending messages to client"
+                    .into(),
+            )
+            .await;
             break;
         }
         // get message from sync server code
@@ -262,7 +339,11 @@ async fn send_unreliable_server_message(
             let serialized_message = match serialize_unreliable_server_message(&message) {
                 Ok(bytes) => bytes,
                 Err(e) => {
-                    log(&log_sender, format!("[server] failed to serialize message: {}", e)).await;
+                    log(
+                        &log_sender,
+                        format!("[server] failed to serialize message: {}", e),
+                    )
+                    .await;
                     continue;
                 }
             };
@@ -271,12 +352,20 @@ async fn send_unreliable_server_message(
                 Ok(mut send_stream) => {
                     if let Ok(()) = send_stream.write_all(&serialized_message).await {
                     } else {
-                        log(&log_sender, format!("[server] failed to send message: {:?}", message)).await;
+                        log(
+                            &log_sender,
+                            format!("[server] failed to send message: {:?}", message),
+                        )
+                        .await;
                     }
                     let _ = send_stream.finish();
                 }
                 Err(e) => {
-                    log(&log_sender, format!("[server] failed to open unidirectional stream: {}", e)).await;
+                    log(
+                        &log_sender,
+                        format!("[server] failed to open unidirectional stream: {}", e),
+                    )
+                    .await;
                     break 'outgoing_loop;
                 }
             }
@@ -302,7 +391,14 @@ pub async fn run_quinn_server(
         while let Some(incoming_conn) = endpoint.accept().await {
             // accept a single connection
             let conn = incoming_conn.await.unwrap();
-            log(&log_sender, format!("[server] connection accepted: addr={}", conn.remote_address())).await;
+            log(
+                &log_sender,
+                format!(
+                    "[server] connection accepted: addr={}",
+                    conn.remote_address()
+                ),
+            )
+            .await;
             let (mut send_stream, mut recv_stream) = conn.open_bi().await.unwrap();
             log(&log_sender, "[server] opened bidirectional stream".into()).await;
             // Create a new player ID for this connection

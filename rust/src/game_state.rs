@@ -327,7 +327,9 @@ impl GameState {
                 .world
                 .query::<(&PlayerId, &PlayerPosition)>()
                 .iter()
-                .map(|(id, position)| UnreliableServerMessage::PlayerPosition(id.clone(), *position))
+                .map(|(id, position)| {
+                    UnreliableServerMessage::PlayerPosition(id.clone(), *position)
+                })
                 .collect::<Vec<UnreliableServerMessage>>();
 
             for (player_id, message_channels) in channel_map.iter() {
