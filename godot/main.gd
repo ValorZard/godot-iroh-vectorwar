@@ -12,16 +12,13 @@ func _ready() -> void:
 func add_remote_player(player):
 	add_child(player)
 
-# Called every frame. 'delta' is the elapsed time since the previous frame.
-func _process(delta: float) -> void:
+# Called every 1/60th of a second
+func _physics_process(delta: float) -> void:
 	$ClientButton/Label.text = "Amount: " + str(GameState.get_remote_player_amount()) + " Local Player Id: " + GameState.get_local_player_id()
 	# both of these won't run if there isn't an active session going
 	# so it's fine to put these here
-	match GameState.get_connection_type():
-		"Client":
-			GameState.poll_client()
-		"Server":
-			GameState.poll_server()
+	GameState.poll_client()
+	GameState.poll_server()
 
 
 func _on_server_button_pressed() -> void:

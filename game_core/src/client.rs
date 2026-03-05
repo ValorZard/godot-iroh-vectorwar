@@ -281,6 +281,8 @@ async fn read_unreliable_server_message(
                         recv_stream.id()
                     );
                 }
+                // Discard the stream after reading the message
+                recv_stream.stop(VarInt::from_u32(0)).ok();
             }
             Err(e) => {
                 println!("[client] failed to accept unidirectional stream: {}", e);
@@ -320,6 +322,7 @@ async fn send_unreliable_client_message(
                     } else {
                         println!("[client] failed to send message: {:?}", message);
                     }
+                    let _ = send_stream.finish();
                 }
                 Err(e) => {
                     println!("[client] failed to open unidirectional stream: {}", e);
