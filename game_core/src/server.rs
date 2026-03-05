@@ -10,12 +10,12 @@ use std::{
 };
 
 use crate::{
-    DELIMITER, EXAMPLE_ALPN, LogSender, MessageSize, PlayerId, ReliableClientMessage, ReliableServerMessage, UNIDIRECTIONAL_STREAM_LIMIT, UnreliableClientMessage, UnreliableServerMessage, log
+    DELIMITER, EXAMPLE_ALPN, LogSender, MessageSize, PlayerId, ReliableClientMessage,
+    ReliableServerMessage, UNIDIRECTIONAL_STREAM_LIMIT, UnreliableClientMessage,
+    UnreliableServerMessage, log,
 };
-use iroh::{
-    Endpoint, RelayMode, SecretKey, endpoint,
-};
-use iroh::endpoint::{Connection, RecvStream, SendStream, VarInt, QuicTransportConfig};
+use iroh::endpoint::{Connection, QuicTransportConfig, RecvStream, SendStream, VarInt};
+use iroh::{Endpoint, RelayMode, SecretKey, endpoint};
 use rkyv::rancor;
 use tokio::{sync::watch, task::JoinSet};
 
@@ -34,15 +34,15 @@ impl Server {
     }
 }
 
-pub async fn make_server_endpoint(
-) -> Result<Endpoint, Box<dyn Error + Send + Sync + 'static>> {
+pub async fn make_server_endpoint() -> Result<Endpoint, Box<dyn Error + Send + Sync + 'static>> {
     let secret_key = SecretKey::generate(&mut rand::rng());
-    
+
     // Build a `Endpoint` for the server
     let endpoint = Endpoint::builder()
         .secret_key(secret_key)
         .alpns(vec![EXAMPLE_ALPN.to_vec()])
-        .bind().await?;
+        .bind()
+        .await?;
 
     Ok(endpoint)
 }
@@ -53,7 +53,11 @@ pub async fn run_server() -> Result<Server, Box<dyn Error + Send + Sync + 'stati
     let (log_sender, log_receiver) = async_channel::unbounded::<String>();
     let mut join_set = JoinSet::new();
     let endpoint = make_server_endpoint().await?;
-    join_set.spawn(run_quinn_server(endpoint.clone(), channel_map.clone(), log_sender));
+    join_set.spawn(run_quinn_server(
+        endpoint.clone(),
+        channel_map.clone(),
+        log_sender,
+    ));
 
     Ok(Server {
         channel_map,
@@ -383,7 +387,10 @@ pub async fn run_quinn_server(
 ) -> tokio::task::JoinSet<()> {
     log(
         &log_sender,
-        format!("[server] server endpoint created, listening on {}", endpoint.id()),
+        format!(
+            "[server] server endpoint created, listening on {}",
+            endpoint.id()
+        ),
     )
     .await;
 
@@ -399,10 +406,7 @@ pub async fn run_quinn_server(
             let conn = incoming_conn.await.unwrap();
             log(
                 &log_sender,
-                format!(
-                    "[server] connection accepted: addr={}",
-                    conn.remote_id()
-                ),
+                format!("[server] connection accepted: addr={}", conn.remote_id()),
             )
             .await;
             let (mut send_stream, mut recv_stream) = conn.open_bi().await.unwrap();

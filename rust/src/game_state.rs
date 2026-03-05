@@ -50,7 +50,11 @@ impl GameState {
     }
 
     #[func]
-    pub fn start_client(&mut self, server_iroh_string: GString, player_template: Gd<PackedScene>) -> Option<Gd<Player>> {
+    pub fn start_client(
+        &mut self,
+        server_iroh_string: GString,
+        player_template: Gd<PackedScene>,
+    ) -> Option<Gd<Player>> {
         godot_print!("starting client");
         if let Ok(client) = AsyncRuntime::block_on(run_client(server_iroh_string.to_string())) {
             godot_print!("client running");

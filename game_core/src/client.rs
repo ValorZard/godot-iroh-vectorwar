@@ -6,12 +6,12 @@ use tokio::sync::watch;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use crate::{
-    EXAMPLE_ALPN, LogReceiver, LogSender, MessageSize, PlayerId, ReliableClientMessage, ReliableServerMessage, UNIDIRECTIONAL_STREAM_LIMIT, UnreliableClientMessage, UnreliableServerMessage, log
-};
-use iroh::{
-    Endpoint, EndpointAddr, PublicKey, RelayMode, SecretKey, endpoint
+    EXAMPLE_ALPN, LogReceiver, LogSender, MessageSize, PlayerId, ReliableClientMessage,
+    ReliableServerMessage, UNIDIRECTIONAL_STREAM_LIMIT, UnreliableClientMessage,
+    UnreliableServerMessage, log,
 };
 use iroh::endpoint::{Connection, QuicTransportConfig, RecvStream, SendStream, VarInt};
+use iroh::{Endpoint, EndpointAddr, PublicKey, RelayMode, SecretKey, endpoint};
 use rkyv::rancor;
 
 pub struct Client {
@@ -31,11 +31,11 @@ async fn connect_to_server(
 ) -> Result<(Endpoint, Connection), Box<dyn Error + Send + Sync + 'static>> {
     let mut rng = rand::rng();
     let secret_key = SecretKey::generate(&mut rng);
-    
+
     let transport_config = QuicTransportConfig::builder()
         .max_concurrent_uni_streams(UNIDIRECTIONAL_STREAM_LIMIT)
         .build();
-    
+
     // Build a `Endpoint`, which uses PublicKeys as endpoint identifiers, uses QUIC for directly connecting to other endpoints, and uses the relay protocol and relay servers to holepunch direct connections between endpoints when there are NATs or firewalls preventing direct connections. If no direct connection can be made, packets are relayed over the relay servers.
     let endpoint = Endpoint::builder()
         // The secret key is used to authenticate with other endpoints. The PublicKey portion of this secret key is how we identify endpoints, often referred to as the `endpoint_id` in our codebase.
@@ -446,11 +446,13 @@ async fn connect_client_to_server(
         log_receiver,
         join_set,
         local_player_id: PlayerId::default(),
-        endpoint
+        endpoint,
     })
 }
 
-pub async fn run_client(server_iroh_string: String) -> Result<Client, Box<dyn Error + Send + Sync + 'static>> {
+pub async fn run_client(
+    server_iroh_string: String,
+) -> Result<Client, Box<dyn Error + Send + Sync + 'static>> {
     console_subscriber::init();
     let (endpoint, connection) = connect_to_server(server_iroh_string).await?;
     let client = connect_client_to_server(endpoint, connection).await?;
