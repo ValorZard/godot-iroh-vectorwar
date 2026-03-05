@@ -9,12 +9,11 @@ use game_core::{
 use godot::{classes::ISprite2D, prelude::*};
 use hecs::{Entity, World};
 
-use crate::{async_runtime::AsyncRuntime, player::Player};
+use crate::{async_runtime::AsyncRuntime, player::{self, Player}};
 
 pub enum NetworkState {
     ClientConnection(Client, Gd<Player>),
-    ServerConnection(Server),
-    HostConnection(Client, Gd<Player>, Server),
+    ServerConnection(Server, Option<Gd<Player>>),
     None,
 }
 
@@ -40,12 +39,22 @@ impl GameState {
     pub fn player_joined(remote_player: Gd<Player>);
 
     #[func]
-    pub fn start_server(&mut self) {
+    pub fn start_server(&mut self, player_template: Option<Gd<PackedScene>>) -> Option<Gd<Player>> {
         if let Ok(server) = AsyncRuntime::block_on(run_server()) {
             godot_print!("server running");
-            self.network_state = NetworkState::ServerConnection(server);
+            let player_ref = if let Some(template) = player_template {
+                self.player_template = Some(template.clone());
+                let mut player_ref = template.instantiate_as::<Player>();
+                player_ref.bind_mut().is_local = true;
+                Some(player_ref)
+            } else {
+                None
+            };
+            self.network_state = NetworkState::ServerConnection(server, player_ref.clone());
+            player_ref
         } else {
             godot_print!("failed to run server");
+            None
         }
     }
 
@@ -228,17 +237,20 @@ impl GameState {
 
     #[func]
     pub fn poll_server(&mut self) {
+        let self_gd = self.to_gd();
         // This is where you can handle any server-related logic
         // For example, you might want to check for incoming connections or messages
-        if let NetworkState::ServerConnection(server) = &mut self.network_state {
+        if let NetworkState::ServerConnection(server, player_ref) = &mut self.network_state {
             // Drain log messages from server async tasks
             while let Ok(log_msg) = server.log_receiver.try_recv() {
                 godot_print!("{}", log_msg);
             }
+            let player_ref = player_ref.clone();
             // Handle server logic with the channel_map
-            let mut channel_map = server.channel_map.lock().unwrap();
+            let channel_map = server.channel_map.clone();
             let mut new_player_vec = Vec::<PlayerId>::new();
             let mut leaving_player_vec = Vec::<PlayerId>::new();
+            let mut players_to_signal: Vec<Gd<Player>> = Vec::new();
             for (player_id, channel) in channel_map.iter() {
                 match channel.reliable_receiver.try_recv() {
                     Ok(message) => {
@@ -251,8 +263,7 @@ impl GameState {
                                     .spawn((player_id.clone(), PlayerPosition { x: 0.0, y: 0.0 }));
                                 new_player_vec.push(player_id.clone());
                                 // send list of players to player who just joined
-                                let player_ids: Vec<PlayerId> =
-                                    channel_map.keys().cloned().collect();
+                                let player_ids: Vec<PlayerId> = channel_map.keys();
                                 if let Some(entry) = channel_map.get(&player_id) {
                                     entry
                                         .reliable_sender
@@ -261,6 +272,21 @@ impl GameState {
                                             player_ids,
                                         })
                                         .unwrap();
+                                }
+                                // if we're hosting, also add player to the scene immediately and signal player joined
+                                if let Some(_) = player_ref {
+                                    let remote_player_scene = self
+                                        .player_template.as_ref()
+                                        .expect("Player template should be initialized")
+                                        .clone();
+                                    let mut remote_player = remote_player_scene.instantiate_as::<Player>();
+                                    self.remote_player_map.insert(player_id.clone(), remote_player.clone());
+                                    {
+                                        let mut remote_player_bind = remote_player.bind_mut();
+                                        remote_player_bind.set_player_id(player_id.clone());   
+
+                                    }
+                                    players_to_signal.push(remote_player);
                                 }
                             }
                             ReliableClientMessage::Quit { player_id } => {
@@ -277,6 +303,12 @@ impl GameState {
                                 for entity in entities_to_despawn {
                                     self.world.despawn(entity).unwrap();
                                 }
+                                // if we're hosting, also remove player from the scene immediately and signal player left
+                                if let Some(_) = player_ref {   
+                                    if let Some(mut remote_player) = self.remote_player_map.remove(&player_id) {
+                                        remote_player.queue_free();
+                                    }
+                                }
                             }
                         }
                     }
@@ -285,7 +317,7 @@ impl GameState {
                     }
                     Err(async_channel::TryRecvError::Closed) => {
                         godot_print!("Channel for player {} closed", player_id);
-                        if !leaving_player_vec.contains(player_id) {
+                        if !leaving_player_vec.contains(&player_id) {
                             leaving_player_vec.push(player_id.clone());
                         }
                     }
@@ -309,6 +341,16 @@ impl GameState {
                                             player_position
                                         );
                                         */
+                                        // if we're hosting, also update position on the scene immediately
+                                        if let Some(_) = player_ref {   
+                                            if let Some(remote_player) =
+                                                self.remote_player_map.get_mut(&player_id)
+                                            {
+                                                let mut remote_player_bind = remote_player.bind_mut();
+                                                // Set position on the underlying Godot node
+                                                remote_player_bind.base_mut().set_global_position(Vector2::new(player_position.x, player_position.y));
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -319,7 +361,7 @@ impl GameState {
                     }
                     Err(async_channel::TryRecvError::Closed) => {
                         godot_print!("Unreliable channel for player {} closed", player_id);
-                        if !leaving_player_vec.contains(player_id) {
+                        if !leaving_player_vec.contains(&player_id) {
                             leaving_player_vec.push(player_id.clone());
                         }
                     }
@@ -338,7 +380,7 @@ impl GameState {
 
             for (player_id, message_channels) in channel_map.iter() {
                 // Skip players that are leaving
-                if leaving_player_vec.contains(player_id) {
+                if leaving_player_vec.contains(&player_id) {
                     continue;
                 }
                 // Get player position in the world
@@ -400,6 +442,17 @@ impl GameState {
                     let _ = self.world.despawn(entity);
                 }
             }
+
+            // Handle player reference for host connection
+            if let Some(mut player_ref) = player_ref {
+                let mut player_ref_bind = player_ref.bind_mut();
+                player_ref_bind.set_player_id(server.get_server_id());
+                player_ref_bind.is_local = true;
+                // signal player joined for host player
+                for player in &players_to_signal {
+                    self_gd.signals().player_joined().emit(player);
+                }
+            }
         }
     }
 
@@ -416,19 +469,21 @@ impl GameState {
 
     #[func]
     pub fn close_server(&mut self) {
-        if let NetworkState::ServerConnection(server) = &mut self.network_state {
+        if let NetworkState::ServerConnection(server, player_ref) = &mut self.network_state {
             // Clean up resources if necessary
-
-            let mut channel_map = server.channel_map.lock().unwrap();
-            for (_player_id, message_channels) in channel_map.iter() {
+            if let Some(player_ref) = player_ref {
+                player_ref.queue_free();
+            }
+            for (_player_id, message_channels) in server.channel_map.iter() {
                 // shut down the tasks for each player
                 message_channels.cancel_sender.send(true).unwrap();
             }
-            channel_map.clear(); // Clear the channel map on exit
+            server.channel_map.clear(); // Clear the channel map on exit
 
             // clean up the join set
             AsyncRuntime::block_on(server.join_set.shutdown());
         }
+        self.network_state = NetworkState::None;
     }
 
     #[func]
@@ -452,8 +507,7 @@ impl GameState {
         let singleton = singleton.bind();
         match &singleton.network_state {
             NetworkState::ClientConnection(_, _) => GString::from("Client"),
-            NetworkState::ServerConnection(_) => GString::from("Server"),
-            NetworkState::HostConnection(_, _, _) => GString::from("Host"),
+            NetworkState::ServerConnection(_, _) => GString::from("Server"),
             NetworkState::None => GString::from("None"),
         }
     }
@@ -462,7 +516,7 @@ impl GameState {
     pub fn get_server_id(&self) -> GString {
         let singleton = GameState::singleton();
         let singleton = singleton.bind();
-        if let NetworkState::ServerConnection(server) = &singleton.network_state {
+        if let NetworkState::ServerConnection(server, _) = &singleton.network_state {
             return GString::from(&server.get_server_id());
         }
         GString::from("")

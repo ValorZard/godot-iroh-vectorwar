@@ -19,7 +19,48 @@ use iroh::{Endpoint, RelayMode, SecretKey, endpoint};
 use rkyv::rancor;
 use tokio::{sync::watch, task::JoinSet};
 
-pub type ChannelMap = Arc<Mutex<HashMap<PlayerId, MessageChannels>>>;
+#[derive(Debug, Clone)]
+pub struct ChannelMap {
+    inner: Arc<Mutex<HashMap<PlayerId, MessageChannels>>>,
+}
+
+impl ChannelMap {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(HashMap::<PlayerId, MessageChannels>::new())),
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (PlayerId, MessageChannels)> {
+        let guard = self.inner.lock().unwrap();
+        guard.iter().map(|(player_id, channels)| (player_id.clone(), channels.clone())).collect::<Vec<_>>().into_iter()
+    }
+
+    pub fn get(&self, player_id: &PlayerId) -> Option<MessageChannels> {
+        let guard = self.inner.lock().unwrap();
+        guard.get(player_id).cloned()
+    }
+
+    pub fn insert(&self, player_id: PlayerId, channels: MessageChannels) {
+        let mut guard = self.inner.lock().unwrap();
+        guard.insert(player_id, channels);
+    }
+
+    pub fn remove(&self, player_id: &PlayerId) {
+        let mut guard = self.inner.lock().unwrap();
+        guard.remove(player_id);
+    }
+
+    pub fn keys(&self) -> Vec<PlayerId> {
+        let guard = self.inner.lock().unwrap();
+        guard.keys().cloned().collect()
+    }
+
+    pub fn clear(&self) {
+        let mut guard = self.inner.lock().unwrap();
+        guard.clear();
+    }
+}
 
 pub struct Server {
     pub channel_map: ChannelMap,
@@ -49,7 +90,7 @@ pub async fn make_server_endpoint() -> Result<Endpoint, Box<dyn Error + Send + S
 
 pub async fn run_server() -> Result<Server, Box<dyn Error + Send + Sync + 'static>> {
     //console_subscriber::init();
-    let channel_map = Arc::new(Mutex::new(HashMap::<PlayerId, MessageChannels>::new()));
+    let channel_map = ChannelMap::new();
     let (log_sender, log_receiver) = async_channel::unbounded::<String>();
     let mut join_set = JoinSet::new();
     let endpoint = make_server_endpoint().await?;
@@ -67,7 +108,7 @@ pub async fn run_server() -> Result<Server, Box<dyn Error + Send + Sync + 'stati
     })
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MessageChannels {
     pub cancel_sender: watch::Sender<bool>,
     pub reliable_receiver: async_channel::Receiver<ReliableClientMessage>,
@@ -426,9 +467,7 @@ pub async fn run_quinn_server(
             let (unreliable_client_sender, unreliable_client_receiver) =
                 async_channel::unbounded::<UnreliableClientMessage>();
             // Store the channels in the map
-            {
-                let mut map = channel_map.lock().unwrap();
-                map.insert(
+            channel_map.insert(
                     player_id.clone(),
                     MessageChannels {
                         cancel_sender,
@@ -438,7 +477,6 @@ pub async fn run_quinn_server(
                         unreliable_sender: unreliable_server_sender,
                     },
                 );
-            }
 
             // say hello to the client for the client to accept the connection
             let hello_message = ReliableServerMessage::Hello {

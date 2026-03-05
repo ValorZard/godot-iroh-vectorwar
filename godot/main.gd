@@ -23,7 +23,9 @@ func _physics_process(delta: float) -> void:
 
 func _on_server_button_pressed() -> void:
 	$ServerButton/Label.text = "Is Running"
-	GameState.start_server()
+	var host_player = GameState.start_server(player_template)
+	if host_player != null:
+		add_child(host_player)
 	$TextEdit.text = GameState.get_server_id()
 
 
