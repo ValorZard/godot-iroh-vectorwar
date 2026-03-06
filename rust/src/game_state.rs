@@ -17,20 +17,13 @@ use crate::{
 pub enum NetworkState {
     ClientConnection(Client, Gd<Player>),
     ServerConnection(Server, Option<Gd<Player>>),
-    None,
-}
-
-impl Default for NetworkState {
-    fn default() -> Self {
-        NetworkState::None
-    }
 }
 
 #[derive(GodotClass)]
 #[class(init, singleton, base = Object)]
 pub struct GameState {
     base: Base<Object>,
-    pub network_state: NetworkState,
+    pub network_state: Option<NetworkState>,
     world: World,
     remote_player_map: HashMap<PlayerId, Gd<Player>>,
     player_template: Option<Gd<PackedScene>>,
@@ -57,7 +50,7 @@ impl GameState {
             } else {
                 None
             };
-            self.network_state = NetworkState::ServerConnection(server, player_ref.clone());
+            self.network_state = Some(NetworkState::ServerConnection(server, player_ref.clone()));
             player_ref
         } else {
             godot_print!("failed to run server");
@@ -76,7 +69,7 @@ impl GameState {
             godot_print!("client running");
             self.player_template = Some(player_template.clone());
             let player_ref = player_template.instantiate_as::<Player>();
-            self.network_state = NetworkState::ClientConnection(client, player_ref.clone());
+            self.network_state = Some(NetworkState::ClientConnection(client, player_ref.clone()));
             Some(player_ref)
         } else {
             godot_print!("failed to run client");
@@ -86,7 +79,8 @@ impl GameState {
 
     #[func]
     pub fn poll_client(&mut self) {
-        if let NetworkState::ClientConnection(client, player_ref) = &mut self.network_state {
+        let mut network_state = self.network_state.take();
+        if let Some(NetworkState::ClientConnection(client, player_ref)) = &mut network_state {
             // Drain log messages from async tasks
             while let Ok(log_msg) = client.log_receiver.try_recv() {
                 godot_print!("{}", log_msg);
@@ -240,6 +234,8 @@ impl GameState {
                 self.signals().player_joined().emit(player);
             }
         }
+
+        self.network_state = network_state;
     }
 
     #[func]
@@ -247,7 +243,8 @@ impl GameState {
         let self_gd = self.to_gd();
         // This is where you can handle any server-related logic
         // For example, you might want to check for incoming connections or messages
-        if let NetworkState::ServerConnection(server, player_ref) = &mut self.network_state {
+        let mut network_state = self.network_state.take();
+        if let Some(NetworkState::ServerConnection(server, player_ref)) = &mut network_state {
             // Drain log messages from server async tasks
             while let Ok(log_msg) = server.log_receiver.try_recv() {
                 godot_print!("{}", log_msg);
@@ -491,22 +488,24 @@ impl GameState {
                 }
             }
         }
+        self.network_state = network_state;
     }
 
     #[func]
     pub fn close_client(&mut self) {
-        if let NetworkState::ClientConnection(client, _) = &mut self.network_state {
+        let mut network_state = self.network_state.take();
+        if let Some(NetworkState::ClientConnection(client, _)) = &mut network_state {
             // Cancel the client if it is running
             let _ = client.cancel_sender.send(true);
             // Optionally, you can also wait for the client's tasks to finish
             AsyncRuntime::block_on(client.join_set.shutdown());
-            self.network_state = NetworkState::None;
         }
     }
 
     #[func]
     pub fn close_server(&mut self) {
-        if let NetworkState::ServerConnection(server, player_ref) = &mut self.network_state {
+        let mut network_state = self.network_state.take();
+        if let Some(NetworkState::ServerConnection(server, player_ref)) = &mut network_state {
             // Clean up resources if necessary
             if let Some(player_ref) = player_ref {
                 player_ref.queue_free();
@@ -520,14 +519,13 @@ impl GameState {
             // clean up the join set
             AsyncRuntime::block_on(server.join_set.shutdown());
         }
-        self.network_state = NetworkState::None;
     }
 
     #[func]
     pub fn get_local_player_id(&self) -> GString {
         let singleton = GameState::singleton();
         let singleton = singleton.bind();
-        if let NetworkState::ClientConnection(client, _) = &singleton.network_state {
+        if let Some(NetworkState::ClientConnection(client, _)) = &singleton.network_state {
             return GString::from(&client.local_player_id);
         }
         GString::from(&DEFAULT_PLAYER_ID)
@@ -539,21 +537,10 @@ impl GameState {
     }
 
     #[func]
-    pub fn get_connection_type(&self) -> GString {
-        let singleton = GameState::singleton();
-        let singleton = singleton.bind();
-        match &singleton.network_state {
-            NetworkState::ClientConnection(_, _) => GString::from("Client"),
-            NetworkState::ServerConnection(_, _) => GString::from("Server"),
-            NetworkState::None => GString::from("None"),
-        }
-    }
-
-    #[func]
     pub fn get_server_id(&self) -> GString {
         let singleton = GameState::singleton();
         let singleton = singleton.bind();
-        if let NetworkState::ServerConnection(server, _) = &singleton.network_state {
+        if let Some(NetworkState::ServerConnection(server, _)) = &singleton.network_state {
             return GString::from(&server.get_server_id());
         }
         GString::from("")
