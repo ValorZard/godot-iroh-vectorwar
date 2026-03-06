@@ -370,7 +370,7 @@ impl GameState {
                 // shut down channels for leaving players and remove from channel map
                 for player_id in leaving_player_set {
                     if let Some(message_channels) = channel_map.get(&player_id) {
-                        message_channels.cancel_sender.send(true).unwrap();
+                        let _ = message_channels.cancel_sender.send(true);
                     }
                     server.channel_map.remove(&player_id);
                 }
@@ -426,12 +426,9 @@ impl GameState {
             }
             for (_player_id, message_channels) in server.channel_map.iter() {
                 // shut down the tasks for each player
-                message_channels.cancel_sender.send(true).unwrap();
+                let _ = message_channels.cancel_sender.send(true);
             }
             server.channel_map.clear(); // Clear the channel map on exit
-
-            // clean up the join set
-            AsyncRuntime::block_on(server.join_set.shutdown());
         }
     }
 

@@ -14,8 +14,11 @@ use crate::{
     ReliableServerMessage, UNIDIRECTIONAL_STREAM_LIMIT, UnreliableClientMessage,
     UnreliableServerMessage, log,
 };
-use iroh::endpoint::{Connection, QuicTransportConfig, RecvStream, SendStream, VarInt};
 use iroh::{Endpoint, RelayMode, SecretKey, endpoint};
+use iroh::{
+    endpoint::{Connection, QuicTransportConfig, RecvStream, SendStream, VarInt},
+    protocol::{AcceptError, ProtocolHandler, Router},
+};
 use rkyv::rancor;
 use tokio::{sync::watch, task::JoinSet};
 
@@ -68,7 +71,7 @@ impl ChannelMap {
 
 pub struct Server {
     pub channel_map: ChannelMap,
-    pub join_set: JoinSet<JoinSet<()>>,
+    pub router: Router,
     pub log_receiver: crate::LogReceiver,
     endpoint: Endpoint,
 }
@@ -96,17 +99,20 @@ pub async fn run_server() -> Result<Server, Box<dyn Error + Send + Sync + 'stati
     //console_subscriber::init();
     let channel_map = ChannelMap::new();
     let (log_sender, log_receiver) = async_channel::unbounded::<String>();
-    let mut join_set = JoinSet::new();
     let endpoint = make_server_endpoint().await?;
-    join_set.spawn(run_quinn_server(
-        endpoint.clone(),
-        channel_map.clone(),
-        log_sender,
-    ));
+    let router = Router::builder(endpoint.clone())
+        .accept(
+            EXAMPLE_ALPN,
+            ServerProtocol {
+                channel_map: channel_map.clone(),
+                log_sender: log_sender.clone(),
+            },
+        )
+        .spawn();
 
     Ok(Server {
         channel_map,
-        join_set,
+        router,
         log_receiver,
         endpoint,
     })
@@ -424,123 +430,117 @@ async fn send_unreliable_server_message(
     }
 }
 
-/// Runs a QUIC server bound to given address.
-pub async fn run_quinn_server(
-    endpoint: Endpoint,
+#[derive(Debug, Clone)]
+struct ServerProtocol {
     channel_map: ChannelMap,
     log_sender: LogSender,
-) -> tokio::task::JoinSet<()> {
-    log(
-        &log_sender,
-        format!(
-            "[server] server endpoint created, listening on {}",
-            endpoint.id()
-        ),
-    )
-    .await;
+}
 
-    // add join set to make sure we don't leak any tasks
-    let mut join_set = tokio::task::JoinSet::new();
-
-    join_set.spawn(async move {
-        // this will automatically drop when we drop the parent join_set
-        // since dropping the parent join_set will stop all the tasks in it
+impl ProtocolHandler for ServerProtocol {
+    async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+        log(
+            &self.log_sender,
+            format!("[server] connection accepted: addr={}", conn.remote_id()),
+        )
+        .await;
         let mut join_set = JoinSet::new();
-        while let Some(incoming_conn) = endpoint.accept().await {
-            // accept a single connection
-            let conn = incoming_conn.await.unwrap();
-            log(
-                &log_sender,
-                format!("[server] connection accepted: addr={}", conn.remote_id()),
-            )
-            .await;
-            let (mut send_stream, mut recv_stream) = conn.open_bi().await.unwrap();
-            log(&log_sender, "[server] opened bidirectional stream".into()).await;
-            // Get the remote ID for this connection
-            let player_id = conn.remote_id().to_string();
-            let (cancel_sender, cancel_receiver) = watch::channel(false);
-            // channel to send from server to client
-            let (reliable_server_sender, reliable_server_receiver) =
-                async_channel::unbounded::<ReliableServerMessage>();
-            // channel to send from client to server
-            let (reliable_client_sender, reliable_client_receiver) =
-                async_channel::unbounded::<ReliableClientMessage>();
-            // channel for unreliable messages from client to server
-            let (unreliable_server_sender, unreliable_server_receiver) =
-                async_channel::unbounded::<UnreliableServerMessage>();
-            let (unreliable_client_sender, unreliable_client_receiver) =
-                async_channel::unbounded::<UnreliableClientMessage>();
-            // Store the channels in the map
-            channel_map.insert(
-                player_id.clone(),
-                MessageChannels {
-                    cancel_sender,
-                    reliable_receiver: reliable_client_receiver,
-                    reliable_sender: reliable_server_sender,
-                    unreliable_receiver: unreliable_client_receiver,
-                    unreliable_sender: unreliable_server_sender,
-                },
-            );
+        let (mut send_stream, mut recv_stream) = conn.open_bi().await.unwrap();
+        log(
+            &self.log_sender,
+            "[server] opened bidirectional stream".into(),
+        )
+        .await;
+        // Get the remote ID for this connection
+        let player_id = conn.remote_id().to_string();
+        let (cancel_sender, cancel_receiver) = watch::channel(false);
+        // channel to send from server to client
+        let (reliable_server_sender, reliable_server_receiver) =
+            async_channel::unbounded::<ReliableServerMessage>();
+        // channel to send from client to server
+        let (reliable_client_sender, reliable_client_receiver) =
+            async_channel::unbounded::<ReliableClientMessage>();
+        // channel for unreliable messages from client to server
+        let (unreliable_server_sender, unreliable_server_receiver) =
+            async_channel::unbounded::<UnreliableServerMessage>();
+        let (unreliable_client_sender, unreliable_client_receiver) =
+            async_channel::unbounded::<UnreliableClientMessage>();
+        // Store the channels in the map
+        self.channel_map.insert(
+            player_id.clone(),
+            MessageChannels {
+                cancel_sender,
+                reliable_receiver: reliable_client_receiver,
+                reliable_sender: reliable_server_sender,
+                unreliable_receiver: unreliable_client_receiver,
+                unreliable_sender: unreliable_server_sender,
+            },
+        );
 
-            // say hello to the client for the client to accept the connection
-            let hello_message = ReliableServerMessage::Hello {
+        // say hello to the client for the client to accept the connection
+        let hello_message = ReliableServerMessage::Hello {
+            player_id: player_id.clone(),
+        };
+        let serialized_message = serialize_reliable_server_message(&hello_message)
+            .expect("Failed to serialize hello message");
+        // then send the serialized message
+        send_stream
+            .write_all(&serialized_message)
+            .await
+            .expect("Failed to write to send stream");
+
+        // send message to sync code that we have new player
+        reliable_client_sender
+            .send(ReliableClientMessage::PlayerJoined {
                 player_id: player_id.clone(),
-            };
-            let serialized_message = serialize_reliable_server_message(&hello_message)
-                .expect("Failed to serialize hello message");
-            // then send the serialized message
-            send_stream
-                .write_all(&serialized_message)
-                .await
-                .expect("Failed to write to send stream");
+            })
+            .await
+            .unwrap();
 
-            // send message to sync code that we have new player
-            reliable_client_sender
-                .send(ReliableClientMessage::PlayerJoined {
-                    player_id: player_id.clone(),
-                })
-                .await
-                .unwrap();
+        let client_quit_sender = reliable_client_sender.clone();
 
-            let client_quit_sender = reliable_client_sender.clone();
+        let cancel_recv = cancel_receiver.clone();
 
-            let cancel_recv = cancel_receiver.clone();
+        join_set.spawn(run_reliable_server_send_stream(
+            send_stream,
+            cancel_recv,
+            reliable_server_receiver,
+            client_quit_sender,
+            player_id.clone(),
+            self.log_sender.clone(),
+        ));
 
-            join_set.spawn(run_reliable_server_send_stream(
-                send_stream,
-                cancel_recv,
-                reliable_server_receiver,
-                client_quit_sender,
-                player_id.clone(),
-                log_sender.clone(),
-            ));
+        let cancel_recv = cancel_receiver.clone();
 
-            let cancel_recv = cancel_receiver.clone();
+        join_set.spawn(run_reliable_server_recv_stream(
+            recv_stream,
+            cancel_recv,
+            reliable_client_sender.clone(),
+            self.log_sender.clone(),
+        ));
 
-            join_set.spawn(run_reliable_server_recv_stream(
-                recv_stream,
-                cancel_recv,
-                reliable_client_sender.clone(),
-                log_sender.clone(),
-            ));
+        let cancel_recv = cancel_receiver.clone();
+        join_set.spawn(read_unreliable_client_message(
+            conn.clone(),
+            cancel_recv,
+            unreliable_client_sender,
+            self.log_sender.clone(),
+        ));
 
-            let cancel_recv = cancel_receiver.clone();
-            join_set.spawn(read_unreliable_client_message(
-                conn.clone(),
-                cancel_recv,
-                unreliable_client_sender,
-                log_sender.clone(),
-            ));
+        let cancel_recv = cancel_receiver.clone();
+        join_set.spawn(send_unreliable_server_message(
+            conn.clone(),
+            cancel_recv,
+            unreliable_server_receiver,
+            self.log_sender.clone(),
+        ));
 
-            let cancel_recv = cancel_receiver.clone();
-            join_set.spawn(send_unreliable_server_message(
-                conn.clone(),
-                cancel_recv,
-                unreliable_server_receiver,
-                log_sender.clone(),
-            ));
-        }
-    });
+        conn.closed().await;
 
-    join_set
+        log(
+            &self.log_sender,
+            format!("[server] connection closed: addr={}", conn.remote_id()),
+        )
+        .await;
+        Ok(())
+    }
 }
