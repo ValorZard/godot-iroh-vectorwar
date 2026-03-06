@@ -40,12 +40,7 @@ impl GameState {
             godot_print!("server running");
             let player_ref = if let Some(template) = player_template {
                 self.player_template = Some(template.clone());
-                let mut player_ref = template.instantiate_as::<Player>();
-                player_ref.bind_mut().is_local = true;
-                self.remote_player_map
-                    .insert(server.get_server_id(), player_ref.clone());
-                self.world
-                    .spawn((server.get_server_id(), PlayerPosition { x: 0.0, y: 0.0 }));
+                let player_ref = self.spawn_local_player(server.get_server_id());
                 Some(player_ref)
             } else {
                 None
@@ -68,12 +63,103 @@ impl GameState {
         if let Ok(client) = AsyncRuntime::block_on(run_client(server_iroh_string.to_string())) {
             godot_print!("client running");
             self.player_template = Some(player_template.clone());
-            let player_ref = player_template.instantiate_as::<Player>();
+            let player_id = client.get_local_endpoint_id();
+            let player_ref = self.spawn_local_player(player_id);
             self.network_state = Some(NetworkState::ClientConnection(client, player_ref.clone()));
             Some(player_ref)
         } else {
             godot_print!("failed to run client");
             None
+        }
+    }
+
+    fn spawn_local_player(&mut self, player_id: PlayerId) -> Gd<Player> {
+        let player_scene = self
+            .player_template
+            .as_ref()
+            .expect("Player template should be initialized")
+            .clone();
+        let mut player = player_scene.instantiate_as::<Player>();
+        {
+            let mut player_bind = player.bind_mut();
+            player_bind.set_player_id(player_id.clone());
+            player_bind.is_local = true;
+        }
+        self.remote_player_map
+            .insert(player_id.clone(), player.clone());
+        self.world
+            .spawn((player_id, PlayerPosition { x: 0.0, y: 0.0 }));
+        player
+    }
+
+    fn spawn_remote_player(&mut self, player_id: PlayerId) {
+        if self.remote_player_map.contains_key(&player_id) {
+            return; // Skip if it's the local player or if its already in the map
+        }
+        let player_scene = self
+            .player_template
+            .as_ref()
+            .expect("Player template should be initialized")
+            .clone();
+        let mut player = player_scene.instantiate_as::<Player>();
+        {
+            let mut player_bind = player.bind_mut();
+            player_bind.set_player_id(player_id.clone());
+            player_bind.is_local = false;
+        }
+        self.remote_player_map
+            .insert(player_id.clone(), player.clone());
+        self.world
+            .spawn((player_id, PlayerPosition { x: 0.0, y: 0.0 }));
+        self.signals().player_joined().emit(&player);
+    }
+
+    fn remove_player(&mut self, player_id: &PlayerId) {
+        godot_print!("[client] Player left with ID: {}", player_id);
+
+        // Remove from Godot scene tree
+        if let Some(mut remote_player) = self.remote_player_map.remove(player_id.as_str()) {
+            remote_player.queue_free();
+        }
+
+        // Remove player from the ECS world
+        let query = self.world.query_mut::<(Entity, &PlayerId)>();
+        let mut entities_to_despawn = Vec::new();
+        for (entity, id) in query {
+            if *id == *player_id {
+                entities_to_despawn.push(entity);
+            }
+        }
+        for entity in entities_to_despawn {
+            self.world.despawn(entity).unwrap();
+        }
+    }
+
+    fn update_player_with_remote_data(
+        &mut self,
+        player_id: &PlayerId,
+        player_position: &PlayerPosition,
+    ) {
+        let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
+        for (id, position) in query {
+            if *id == *player_id {
+                *position = *player_position;
+                /*
+                godot_print!(
+                    "Updated position for player {}: ({}, {})",
+                    player_id,
+                    position.x,
+                    position.y
+                );
+                */
+            }
+        }
+        if let Some(remote_player) = self.remote_player_map.get_mut(player_id.as_str()) {
+            let mut remote_player_bind = remote_player.bind_mut();
+            // Set position on the underlying Godot node
+            remote_player_bind
+                .base_mut()
+                .set_global_position(Vector2::new(player_position.x, player_position.y));
         }
     }
 
@@ -88,52 +174,15 @@ impl GameState {
 
             // This is where you can handle any client-related logic
             // For example, you might want to check for incoming messages from the server
-            let mut players_to_signal: Vec<Gd<Player>> = Vec::new();
             let server_reliable_receiver = client.reliable_server_receiver.clone();
             while let Ok(message) = server_reliable_receiver.try_recv() {
                 godot_print!("Received message from server: {:?}", message);
                 match message {
                     ReliableServerMessage::Hello { player_id } => {
-                        client.local_player_id = player_id;
-                        self.world.spawn((
-                            client.local_player_id.clone(),
-                            PlayerPosition { x: 0.0, y: 0.0 },
-                        ));
-                        let mut player_ref = player_ref.bind_mut();
-                        player_ref.set_player_id(client.local_player_id.clone());
-                        player_ref.is_local = true;
-                        // TODO: figure out why this never gets called
-                        godot_print!("[client] local ID: {}", client.local_player_id);
-                        self.remote_player_map
-                            .insert(client.local_player_id.clone(), player_ref.to_gd());
                     }
                     ReliableServerMessage::PlayersJoined { player_ids } => {
-                        let local_player_id = client.local_player_id.clone();
                         for remote_player_id in player_ids {
-                            if remote_player_id == local_player_id
-                                || self.remote_player_map.contains_key(&remote_player_id)
-                            {
-                                continue; // Skip if it's the local player or if its already in the map
-                            }
-                            godot_print!("[client] Player joined with ID: {}", remote_player_id);
-                            self.world.spawn((
-                                remote_player_id.clone(),
-                                PlayerPosition { x: 0.0, y: 0.0 },
-                            ));
-                            let remote_player_scene = self
-                                .player_template
-                                .as_ref()
-                                .expect("Player template should be initialized")
-                                .clone();
-                            let mut remote_player = remote_player_scene.instantiate_as::<Player>();
-                            self.remote_player_map
-                                .insert(remote_player_id.clone(), remote_player.clone());
-                            {
-                                let mut remote_player_bind = remote_player.bind_mut();
-                                remote_player_bind.set_player_id(remote_player_id);
-                                remote_player_bind.is_local = false;
-                            }
-                            players_to_signal.push(remote_player);
+                            self.spawn_remote_player(remote_player_id);
                         }
                         let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
                         let query_vec = query.into_iter().collect::<Vec<_>>();
@@ -141,30 +190,7 @@ impl GameState {
                     }
                     ReliableServerMessage::PlayersLeft { player_ids } => {
                         for player_id in player_ids {
-                            if player_id == client.local_player_id {
-                                continue; // Skip if it's the local player
-                            }
-
-                            godot_print!("[client] Player left with ID: {}", player_id);
-
-                            // Remove from Godot scene tree
-                            if let Some(mut remote_player) =
-                                self.remote_player_map.remove(&player_id)
-                            {
-                                remote_player.queue_free();
-                            }
-
-                            // Remove player from the ECS world
-                            let query = self.world.query_mut::<(Entity, &PlayerId)>();
-                            let mut entities_to_despawn = Vec::new();
-                            for (entity, id) in query {
-                                if *id == player_id {
-                                    entities_to_despawn.push(entity);
-                                }
-                            }
-                            for entity in entities_to_despawn {
-                                self.world.despawn(entity).unwrap();
-                            }
+                            self.remove_player(&player_id);
                         }
                     }
                     ReliableServerMessage::Quit => {
@@ -178,32 +204,10 @@ impl GameState {
                 match message {
                     UnreliableServerMessage::PlayerPosition(remote_player_id, player_data) => {
                         // for now, ignore if updating local player
-                        if remote_player_id == client.local_player_id {
+                        if remote_player_id == client.get_local_endpoint_id() {
                             continue;
                         }
-                        let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
-                        for (id, position) in query {
-                            if *id == remote_player_id {
-                                *position = player_data;
-                                /*
-                                godot_print!(
-                                    "Updated position for player {}: ({}, {})",
-                                    remote_player_id,
-                                    position.x,
-                                    position.y
-                                );
-                                */
-                            }
-                        }
-                        if let Some(remote_player) =
-                            self.remote_player_map.get_mut(&remote_player_id)
-                        {
-                            let mut remote_player_bind = remote_player.bind_mut();
-                            // Set position on the underlying Godot node
-                            remote_player_bind
-                                .base_mut()
-                                .set_global_position(Vector2::new(player_data.x, player_data.y));
-                        }
+                        self.update_player_with_remote_data(&remote_player_id, &player_data);
                     }
                 }
             }
@@ -215,7 +219,7 @@ impl GameState {
                 // Update local player position in the ECS world
                 let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
                 for (id, world_position) in query {
-                    if *id == client.local_player_id {
+                    if *id == client.get_local_endpoint_id() {
                         world_position.x = position.x;
                         world_position.y = position.y;
                     }
@@ -230,9 +234,6 @@ impl GameState {
                     godot_print!("Failed to send player position: {:?}", e);
                 }
             }
-            for player in &players_to_signal {
-                self.signals().player_joined().emit(player);
-            }
         }
 
         self.network_state = network_state;
@@ -240,7 +241,6 @@ impl GameState {
 
     #[func]
     pub fn poll_server(&mut self) {
-        let self_gd = self.to_gd();
         // This is where you can handle any server-related logic
         // For example, you might want to check for incoming connections or messages
         let mut network_state = self.network_state.take();
@@ -253,8 +253,6 @@ impl GameState {
             // Handle server logic with the channel_map
             let channel_map = server.channel_map.clone();
             let mut new_player_vec = Vec::<PlayerId>::new();
-            let mut leaving_player_vec = Vec::<PlayerId>::new();
-            let mut players_to_signal: Vec<Gd<Player>> = Vec::new();
             for (player_id, channel) in channel_map.iter() {
                 match channel.reliable_receiver.try_recv() {
                     Ok(message) => {
@@ -263,8 +261,7 @@ impl GameState {
                         match message {
                             ReliableClientMessage::PlayerJoined { player_id } => {
                                 godot_print!("Player {} joined", player_id);
-                                self.world
-                                    .spawn((player_id.clone(), PlayerPosition { x: 0.0, y: 0.0 }));
+                                self.spawn_remote_player(player_id.clone());
                                 new_player_vec.push(player_id.clone());
                                 // send list of players to player who just joined
                                 let mut player_ids: Vec<PlayerId> = channel_map.keys();
@@ -284,46 +281,29 @@ impl GameState {
                                         })
                                         .unwrap();
                                 }
-                                // if we're hosting, also add player to the scene immediately and signal player joined
-                                if let Some(_) = player_ref {
-                                    let remote_player_scene = self
-                                        .player_template
-                                        .as_ref()
-                                        .expect("Player template should be initialized")
-                                        .clone();
-                                    let mut remote_player =
-                                        remote_player_scene.instantiate_as::<Player>();
-                                    self.remote_player_map
-                                        .insert(player_id.clone(), remote_player.clone());
-                                    {
-                                        let mut remote_player_bind = remote_player.bind_mut();
-                                        remote_player_bind.set_player_id(player_id.clone());
-                                    }
-                                    players_to_signal.push(remote_player);
-                                }
                             }
                             ReliableClientMessage::Quit { player_id } => {
-                                godot_print!("Player {} left", player_id);
-                                leaving_player_vec.push(player_id.clone());
-                                // remove entities associated with this player
-                                let query = self.world.query_mut::<(Entity, &PlayerId)>();
-                                let mut entities_to_despawn = Vec::new();
-                                for (entity, id) in query {
-                                    if *id == player_id {
-                                        entities_to_despawn.push(entity);
-                                    }
-                                }
-                                for entity in entities_to_despawn {
-                                    self.world.despawn(entity).unwrap();
-                                }
-                                // if we're hosting, also remove player from the scene immediately and signal player left
-                                if let Some(_) = player_ref {
-                                    if let Some(mut remote_player) =
-                                        self.remote_player_map.remove(&player_id)
+                                self.remove_player(&player_id);
+                                let leaving_player_message = ReliableServerMessage::PlayersLeft {
+                                    player_ids: vec![player_id.clone()],
+                                };
+                                if let Some(entry) = channel_map.get(&player_id) {
+                                    if let Err(e) = entry
+                                        .reliable_sender
+                                        .try_send(leaving_player_message.clone())
                                     {
-                                        remote_player.queue_free();
+                                        godot_print!(
+                                            "Failed to send leaving player message to player {}: {}",
+                                            player_id,
+                                            e
+                                        );
                                     }
                                 }
+                                // Signal cancellation before removing
+                                if let Some(channels) = channel_map.get(&player_id) {
+                                    let _ = channels.cancel_sender.send(true);
+                                }
+                                channel_map.remove(&player_id);
                             }
                         }
                     }
@@ -332,9 +312,6 @@ impl GameState {
                     }
                     Err(async_channel::TryRecvError::Closed) => {
                         godot_print!("Channel for player {} closed", player_id);
-                        if !leaving_player_vec.contains(&player_id) {
-                            leaving_player_vec.push(player_id.clone());
-                        }
                     }
                 }
 
@@ -343,37 +320,7 @@ impl GameState {
                         // Handle the received message
                         match message {
                             UnreliableClientMessage::PlayerPosition(player_position) => {
-                                // Update player position in the world
-                                let query =
-                                    self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
-                                for (id, position) in query {
-                                    if *id == *player_id {
-                                        *position = player_position;
-                                        /*
-                                        godot_print!(
-                                            "Player {} position: {:?}",
-                                            player_id,
-                                            player_position
-                                        );
-                                        */
-                                        // if we're hosting, also update position on the scene immediately
-                                        if let Some(_) = player_ref {
-                                            if let Some(remote_player) =
-                                                self.remote_player_map.get_mut(&player_id)
-                                            {
-                                                let mut remote_player_bind =
-                                                    remote_player.bind_mut();
-                                                // Set position on the underlying Godot node
-                                                remote_player_bind.base_mut().set_global_position(
-                                                    Vector2::new(
-                                                        player_position.x,
-                                                        player_position.y,
-                                                    ),
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
+                                self.update_player_with_remote_data(&player_id, &player_position);
                             }
                         }
                     }
@@ -382,9 +329,6 @@ impl GameState {
                     }
                     Err(async_channel::TryRecvError::Closed) => {
                         godot_print!("Unreliable channel for player {} closed", player_id);
-                        if !leaving_player_vec.contains(&player_id) {
-                            leaving_player_vec.push(player_id.clone());
-                        }
                     }
                 }
             }
@@ -400,10 +344,6 @@ impl GameState {
                 .collect::<Vec<UnreliableServerMessage>>();
 
             for (player_id, message_channels) in channel_map.iter() {
-                // Skip players that are leaving
-                if leaving_player_vec.contains(&player_id) {
-                    continue;
-                }
                 // Get player position in the world
                 let reliable_server_sender = &message_channels.reliable_sender;
                 let unreliable_server_sender = &message_channels.unreliable_sender;
@@ -428,51 +368,12 @@ impl GameState {
                         );
                     }
                 }
-                // Send leaving player messages
-                if !leaving_player_vec.is_empty() {
-                    let leaving_player_message = ReliableServerMessage::PlayersLeft {
-                        player_ids: leaving_player_vec.clone(),
-                    };
-                    if let Err(e) = reliable_server_sender.try_send(leaving_player_message) {
-                        godot_print!(
-                            "Failed to send leaving player message to player {}: {}",
-                            player_id,
-                            e
-                        );
-                    }
-                }
-            }
-
-            // remove channels from players that have left
-            for player_id in &leaving_player_vec {
-                // Signal cancellation before removing
-                if let Some(channels) = channel_map.get(player_id) {
-                    let _ = channels.cancel_sender.send(true);
-                }
-                channel_map.remove(player_id);
-
-                // Remove player entities from the ECS world
-                let query = self.world.query_mut::<(Entity, &PlayerId)>();
-                let mut entities_to_despawn = Vec::new();
-                for (entity, id) in query {
-                    if *id == *player_id {
-                        entities_to_despawn.push(entity);
-                    }
-                }
-                for entity in entities_to_despawn {
-                    let _ = self.world.despawn(entity);
-                }
             }
 
             // Handle player reference for host connection
-            if let Some(mut player_ref) = player_ref {
-                let mut player_ref_bind = player_ref.bind_mut();
-                player_ref_bind.set_player_id(server.get_server_id());
-                player_ref_bind.is_local = true;
-
+            if let Some(player_ref) = player_ref {
                 // Update host player's position in the ECS world so it gets broadcast to clients
-                let position = player_ref_bind.base().get_global_position();
-                drop(player_ref_bind);
+                let position = player_ref.bind().base().get_global_position();
                 let host_id = server.get_server_id();
                 let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
                 for (id, world_position) in query {
@@ -480,11 +381,6 @@ impl GameState {
                         world_position.x = position.x;
                         world_position.y = position.y;
                     }
-                }
-
-                // signal player joined for host player
-                for player in &players_to_signal {
-                    self_gd.signals().player_joined().emit(player);
                 }
             }
         }
@@ -522,27 +418,20 @@ impl GameState {
     }
 
     #[func]
-    pub fn get_local_player_id(&self) -> GString {
-        let singleton = GameState::singleton();
-        let singleton = singleton.bind();
-        if let Some(NetworkState::ClientConnection(client, _)) = &singleton.network_state {
-            return GString::from(&client.local_player_id);
-        }
-        GString::from(&DEFAULT_PLAYER_ID)
-    }
-
-    #[func]
     pub fn get_remote_player_amount(&self) -> i32 {
         self.remote_player_map.len() as i32
     }
 
     #[func]
-    pub fn get_server_id(&self) -> GString {
+    pub fn get_local_network_id(&self) -> GString {
         let singleton = GameState::singleton();
         let singleton = singleton.bind();
-        if let Some(NetworkState::ServerConnection(server, _)) = &singleton.network_state {
+        if let Some(NetworkState::ClientConnection(client, _)) = &singleton.network_state {
+            return GString::from(&client.get_local_endpoint_id());
+        }
+        else if let Some(NetworkState::ServerConnection(server, _)) = &singleton.network_state {
             return GString::from(&server.get_server_id());
         }
-        GString::from("")
+        GString::from(&DEFAULT_PLAYER_ID)
     }
 }
