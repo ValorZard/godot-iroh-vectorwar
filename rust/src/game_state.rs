@@ -85,7 +85,8 @@ impl GameState {
         let entity = AsyncRuntime::block_on(self.inner.start_server());
         self.player_template = Some(player_template);
         if let Some(player_entity) = entity {
-            let player_node = self.spawn_local_player(player_entity, self.inner.get_local_network_id().unwrap());
+            let player_node =
+                self.spawn_local_player(player_entity, self.inner.get_local_network_id().unwrap());
             Some(player_node)
         } else {
             None
@@ -101,7 +102,8 @@ impl GameState {
         let entity = AsyncRuntime::block_on(self.inner.start_client(server_iroh_string.into()));
         self.player_template = Some(player_template);
         if let Some(player_entity) = entity {
-            let player_node = self.spawn_local_player(player_entity, self.inner.get_local_network_id().unwrap());
+            let player_node =
+                self.spawn_local_player(player_entity, self.inner.get_local_network_id().unwrap());
             Some(player_node)
         } else {
             None
@@ -120,7 +122,8 @@ impl GameState {
             player_bind.set_player_id(player_id.clone());
             player_bind.is_local = true;
         }
-        self.entity_to_player_map.insert(player_entity, player.clone());
+        self.entity_to_player_map
+            .insert(player_entity, player.clone());
         player
     }
 
@@ -189,7 +192,6 @@ impl GameState {
         }
         self.sync_player_positions();
     }
-
 
     fn sync_player_positions(&mut self) {
         for (entity, player_node) in self.entity_to_player_map.iter_mut() {
