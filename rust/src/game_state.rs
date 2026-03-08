@@ -153,16 +153,16 @@ impl GameState {
     }
 
     fn remove_player(&mut self, player_id: &PlayerId) {
-        if let Some(entity) = self.inner.remove_player(player_id) {
-            if let Some(mut player_node) = self.entity_to_player_map.remove(&entity) {
-                player_node.queue_free();
-            }
-        } else {
-            godot_print!(
-                "[error] Failed to remove player with ID: {}. Player not found.",
-                player_id
-            );
+        // Look up entity before removing from ECS
+        let Some(entity) = self.inner.get_entity_associated_with_player_id(player_id) else {
+            return;
+        };
+        // Remove Godot node
+        if let Some(mut player_node) = self.entity_to_player_map.remove(&entity) {
+            player_node.queue_free();
         }
+        // Remove from inner ECS
+        self.inner.remove_player(player_id);
     }
 
     #[func]

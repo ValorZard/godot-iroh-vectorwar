@@ -189,9 +189,6 @@ impl GameState {
                         new_players.extend(player_ids);
                     }
                     ReliableServerMessage::PlayersLeft { player_ids } => {
-                        for player_id in &player_ids {
-                            self.remove_player(&player_id);
-                        }
                         leaving_players.extend(player_ids);
                     }
                     ReliableServerMessage::Quit => {
@@ -362,9 +359,7 @@ impl GameState {
             if !leaving_players_set.is_empty() {
                 let leaving_player_ids: Vec<PlayerId> =
                     leaving_players_set.iter().cloned().collect();
-                for player_id in &leaving_player_ids {
-                    self.remove_player(player_id);
-                }
+                // Don't remove here - let the Godot layer handle it
                 let leaving_player_message = ReliableServerMessage::PlayersLeft {
                     player_ids: leaving_player_ids.clone(),
                 };
