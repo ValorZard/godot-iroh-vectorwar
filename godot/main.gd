@@ -2,6 +2,7 @@ extends Node2D
 
 @export
 var player_template : PackedScene
+var client_player : Player
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
@@ -18,7 +19,10 @@ func _physics_process(delta: float) -> void:
 	$ClientButton/Label.text = "Amount: " + str(GameState.get_remote_player_amount()) + " Local Player Id: " + GameState.get_local_network_id()
 	# both of these won't run if there isn't an active session going
 	# so it's fine to put these here
-	GameState.poll_client()
+	var position := Vector2.ZERO
+	if client_player != null:
+		position = client_player.global_position
+	GameState.poll_client(position)
 	GameState.poll_server()
 
 
@@ -37,7 +41,7 @@ func _on_host_button_pressed() -> void:
 func _on_client_button_button_down() -> void:
 	print("starting client")
 	var server_iroh_id : String = $TextEdit.text
-	var client_player := GameState.start_client(server_iroh_id, player_template)
+	client_player = GameState.start_client(server_iroh_id, player_template)
 	if client_player != null:
 		add_child(client_player)
 	else:
