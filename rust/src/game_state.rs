@@ -179,6 +179,10 @@ impl GameState {
             self.remove_player(&removed_player);
         }
         self.sync_player_positions();
+        // print messages
+        for log_msg in self.inner.drain_log_buffer() {
+            godot_print!("{}", log_msg);
+        }
     }
 
     #[func]
@@ -191,6 +195,10 @@ impl GameState {
             self.remove_player(&removed_player);
         }
         self.sync_player_positions();
+        // print messages
+        for log_msg in self.inner.drain_log_buffer() {
+            godot_print!("{}", log_msg);
+        }
     }
 
     fn sync_player_positions(&mut self) {

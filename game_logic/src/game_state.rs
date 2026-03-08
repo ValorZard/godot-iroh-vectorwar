@@ -41,6 +41,7 @@ pub struct GameState {
     pub network_state: Option<NetworkState>,
     world: World,
     remote_player_map: HashMap<PlayerId, hecs::Entity>,
+    log_buffer: Vec<String>,
 }
 
 impl Default for GameState {
@@ -49,6 +50,7 @@ impl Default for GameState {
             network_state: None,
             world: World::new(),
             remote_player_map: HashMap::new(),
+            log_buffer: Vec::new(),
         }
     }
 }
@@ -69,16 +71,16 @@ impl GameState {
             ));
             Some(player_ref)
         } else {
-            println!("failed to run server");
+            self.log_buffer.push("failed to run server".to_string());
             None
         }
     }
 
     pub async fn start_client(&mut self, server_iroh_string: String) -> Option<Entity> {
-        println!("starting client");
+        self.log_buffer.push("starting client".to_string());
         match run_client(server_iroh_string.to_string()).await {
             Ok(client) => {
-                println!("client running");
+                self.log_buffer.push("client running".to_string());
                 let player_id = client.get_local_endpoint_id();
                 let player_ref = self.spawn_local_player(player_id);
                 self.network_state =
@@ -86,7 +88,7 @@ impl GameState {
                 Some(player_ref)
             }
             Err(e) => {
-                println!("failed to run client: {:?}", e);
+                self.log_buffer.push(format!("failed to run client: {:?}", e));
                 None
             }
         }
@@ -126,7 +128,7 @@ impl GameState {
     }
 
     pub fn remove_player(&mut self, player_id: &PlayerId) -> Option<Entity> {
-        println!("[client] Player left with ID: {}", player_id);
+        self.log_buffer.push(format!("[client] Player left with ID: {}", player_id));
 
         // Remove from player map
         let entity_to_remove = self.remote_player_map.remove(player_id);
@@ -167,14 +169,14 @@ impl GameState {
         if let Some(NetworkState::ClientConnection(client, player_ref)) = &mut network_state {
             // Drain log messages from async tasks
             while let Ok(log_msg) = client.log_receiver.try_recv() {
-                println!("{}", log_msg);
+                self.log_buffer.push(log_msg);
             }
 
             // This is where you can handle any client-related logic
             // For example, you might want to check for incoming messages from the server
             let server_reliable_receiver = client.reliable_server_receiver.clone();
             while let Ok(message) = server_reliable_receiver.try_recv() {
-                println!("Received message from server: {:?}", message);
+                self.log_buffer.push(format!("Received message from server: {:?}", message));
                 match message {
                     ReliableServerMessage::Hello { player_id } => {}
                     ReliableServerMessage::PlayersJoined { player_ids } => {
@@ -183,7 +185,7 @@ impl GameState {
                         }
                         let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
                         let query_vec = query.into_iter().collect::<Vec<_>>();
-                        println!("[client] Current players: {:?}", query_vec);
+                        self.log_buffer.push(format!("[client] Current players: {:?}", query_vec));
                         new_players.extend(player_ids);
                     }
                     ReliableServerMessage::PlayersLeft { player_ids } => {
@@ -193,7 +195,7 @@ impl GameState {
                         leaving_players.extend(player_ids);
                     }
                     ReliableServerMessage::Quit => {
-                        println!("[client] Server requested to quit");
+                        self.log_buffer.push("[client] Server requested to quit".to_string());
                     }
                 }
             }
@@ -225,7 +227,7 @@ impl GameState {
                             y: player.position.y,
                         });
                         if let Err(e) = client.unreliable_client_sender.try_send(message) {
-                            println!("Failed to send player position: {:?}", e);
+                            self.log_buffer.push(format!("Failed to send player position: {:?}", e));
                         }
                         break;
                     }
@@ -249,7 +251,7 @@ impl GameState {
         if let Some(NetworkState::ServerConnection(server, player_ref)) = &mut network_state {
             // Drain log messages from server async tasks
             while let Ok(log_msg) = server.log_receiver.try_recv() {
-                println!("{}", log_msg);
+                self.log_buffer.push(log_msg);
             }
             let player_ref = player_ref.clone();
             // Handle server logic with the channel_map
@@ -261,7 +263,7 @@ impl GameState {
                         // Handle the received message
                         match message {
                             ReliableClientMessage::PlayerJoined { player_id } => {
-                                println!("Player {} joined", player_id);
+                                self.log_buffer.push(format!("Player {} joined", player_id));
                                 self.spawn_remote_player(player_id.clone());
                                 new_players_set.insert(player_id.clone());
                                 // send list of players to player who just joined
@@ -470,5 +472,9 @@ impl GameState {
 
     pub fn get_entity_associated_with_player_id(&self, player_id: &PlayerId) -> Option<Entity> {
         self.remote_player_map.get(player_id).cloned()
+    }
+
+    pub fn drain_log_buffer(&mut self) -> Vec<String> {
+        self.log_buffer.drain(..).collect()
     }
 }
