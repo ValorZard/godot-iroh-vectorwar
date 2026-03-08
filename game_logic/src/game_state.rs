@@ -129,20 +129,11 @@ impl GameState {
         println!("[client] Player left with ID: {}", player_id);
 
         // Remove from player map
-        self.remote_player_map.remove(player_id);
-
-        // Remove player from the ECS world
-        let mut entity_to_despawn = None;
-        for (entity, id) in self.world.query_mut::<(Entity, &PlayerId)>() {
-            if *id == *player_id {
-                entity_to_despawn = Some(entity);
-                break;
-            }
-        }
-        if let Some(entity) = entity_to_despawn {
+        let entity_to_remove = self.remote_player_map.remove(player_id);
+        if let Some(entity) = entity_to_remove {
             self.world.despawn(entity).unwrap();
         }
-        entity_to_despawn
+        entity_to_remove
     }
 
     pub fn update_player_with_remote_data(
