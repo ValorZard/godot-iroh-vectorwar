@@ -72,7 +72,7 @@ pub struct GameState {
     base: Base<Object>,
     inner: GameStateInner,
     player_template: Option<Gd<PackedScene>>,
-    entity_to_player_map: HashMap<Entity, Gd<Player>>,
+    player_id_to_godot_map: HashMap<PlayerId, Gd<Player>>,
 }
 
 #[godot_api]
@@ -85,8 +85,7 @@ impl GameState {
         let entity = AsyncRuntime::block_on(self.inner.start_server());
         self.player_template = Some(player_template);
         if let Some(player_entity) = entity {
-            let player_node =
-                self.spawn_local_player(player_entity, self.inner.get_local_network_id().unwrap());
+            let player_node = self.spawn_local_player(self.inner.get_local_network_id().unwrap());
             Some(player_node)
         } else {
             None
@@ -102,15 +101,14 @@ impl GameState {
         let entity = AsyncRuntime::block_on(self.inner.start_client(server_iroh_string.into()));
         self.player_template = Some(player_template);
         if let Some(player_entity) = entity {
-            let player_node =
-                self.spawn_local_player(player_entity, self.inner.get_local_network_id().unwrap());
+            let player_node = self.spawn_local_player(self.inner.get_local_network_id().unwrap());
             Some(player_node)
         } else {
             None
         }
     }
 
-    fn spawn_local_player(&mut self, player_entity: Entity, player_id: PlayerId) -> Gd<Player> {
+    fn spawn_local_player(&mut self, player_id: PlayerId) -> Gd<Player> {
         let player_scene = self
             .player_template
             .as_ref()
@@ -122,8 +120,8 @@ impl GameState {
             player_bind.set_player_id(player_id.clone());
             player_bind.is_local = true;
         }
-        self.entity_to_player_map
-            .insert(player_entity, player.clone());
+        self.player_id_to_godot_map
+            .insert(player_id.clone(), player.clone());
         player
     }
 
@@ -133,7 +131,7 @@ impl GameState {
         let Some(entity) = self.inner.get_entity_associated_with_player_id(&player_id) else {
             return;
         };
-        if self.entity_to_player_map.contains_key(&entity) {
+        if self.player_id_to_godot_map.contains_key(&player_id) {
             // Already have a Godot node for this player (e.g. local player)
             return;
         }
@@ -148,17 +146,14 @@ impl GameState {
             player_bind.set_player_id(player_id.clone());
             player_bind.is_local = false;
         }
-        self.entity_to_player_map.insert(entity, player.clone());
+        self.player_id_to_godot_map
+            .insert(player_id.clone(), player.clone());
         self.signals().player_joined().emit(&player);
     }
 
     fn remove_player(&mut self, player_id: &PlayerId) {
-        // Look up entity before removing from ECS
-        let Some(entity) = self.inner.get_entity_associated_with_player_id(player_id) else {
-            return;
-        };
         // Remove Godot node
-        if let Some(mut player_node) = self.entity_to_player_map.remove(&entity) {
+        if let Some(mut player_node) = self.player_id_to_godot_map.remove(player_id) {
             player_node.queue_free();
         }
         // Remove from inner ECS
@@ -202,8 +197,8 @@ impl GameState {
     }
 
     fn sync_player_positions(&mut self) {
-        for (entity, player_node) in self.entity_to_player_map.iter_mut() {
-            if let Some(player) = self.inner.get_player_component(*entity) {
+        for (player_id, player_node) in self.player_id_to_godot_map.iter_mut() {
+            if let Some(player) = self.inner.get_player_component(player_id) {
                 let position = Vector2::new(player.position.x, player.position.y);
                 player_node.set_global_position(position);
             }

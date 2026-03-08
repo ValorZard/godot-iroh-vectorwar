@@ -88,7 +88,8 @@ impl GameState {
                 Some(player_ref)
             }
             Err(e) => {
-                self.log_buffer.push(format!("failed to run client: {:?}", e));
+                self.log_buffer
+                    .push(format!("failed to run client: {:?}", e));
                 None
             }
         }
@@ -128,7 +129,8 @@ impl GameState {
     }
 
     pub fn remove_player(&mut self, player_id: &PlayerId) -> Option<Entity> {
-        self.log_buffer.push(format!("[client] Player left with ID: {}", player_id));
+        self.log_buffer
+            .push(format!("[client] Player left with ID: {}", player_id));
 
         // Remove from player map
         let entity_to_remove = self.remote_player_map.remove(player_id);
@@ -176,7 +178,8 @@ impl GameState {
             // For example, you might want to check for incoming messages from the server
             let server_reliable_receiver = client.reliable_server_receiver.clone();
             while let Ok(message) = server_reliable_receiver.try_recv() {
-                self.log_buffer.push(format!("Received message from server: {:?}", message));
+                self.log_buffer
+                    .push(format!("Received message from server: {:?}", message));
                 match message {
                     ReliableServerMessage::Hello { player_id } => {}
                     ReliableServerMessage::PlayersJoined { player_ids } => {
@@ -185,14 +188,16 @@ impl GameState {
                         }
                         let query = self.world.query_mut::<(&PlayerId, &mut PlayerPosition)>();
                         let query_vec = query.into_iter().collect::<Vec<_>>();
-                        self.log_buffer.push(format!("[client] Current players: {:?}", query_vec));
+                        self.log_buffer
+                            .push(format!("[client] Current players: {:?}", query_vec));
                         new_players.extend(player_ids);
                     }
                     ReliableServerMessage::PlayersLeft { player_ids } => {
                         leaving_players.extend(player_ids);
                     }
                     ReliableServerMessage::Quit => {
-                        self.log_buffer.push("[client] Server requested to quit".to_string());
+                        self.log_buffer
+                            .push("[client] Server requested to quit".to_string());
                     }
                 }
             }
@@ -224,7 +229,8 @@ impl GameState {
                             y: player.position.y,
                         });
                         if let Err(e) = client.unreliable_client_sender.try_send(message) {
-                            self.log_buffer.push(format!("Failed to send player position: {:?}", e));
+                            self.log_buffer
+                                .push(format!("Failed to send player position: {:?}", e));
                         }
                         break;
                     }
@@ -449,8 +455,9 @@ impl GameState {
         Some(query.clone())
     }
 
-    pub fn get_player_component(&mut self, entity: Entity) -> Option<Player> {
-        let query = self.world.query_one_mut::<&Player>(entity).ok()?;
+    pub fn get_player_component(&mut self, player_id: &PlayerId) -> Option<Player> {
+        let player_entity = self.remote_player_map.get(player_id)?;
+        let query = self.world.query_one_mut::<&Player>(*player_entity).ok()?;
         Some(query.clone())
     }
 
