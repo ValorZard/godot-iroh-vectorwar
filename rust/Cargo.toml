@@ -9,6 +9,7 @@ godot.workspace = true
 tokio.workspace = true
 async-channel.workspace = true
 game_core = { path = "../game_core" }
+game_logic = { path = "../game_logic" }
 hecs.workspace = true
 [lib]
 crate-type = ["cdylib"] # Compile this crate to a dynamic C library.

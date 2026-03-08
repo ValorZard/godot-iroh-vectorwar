@@ -1,4 +1,5 @@
 use game_core::DEFAULT_PLAYER_ID;
+use game_logic::game_state::InputData;
 use godot::classes::{Input, Sprite2D};
 use godot::prelude::*;
 
@@ -10,11 +11,14 @@ pub struct Player {
     pub player_id: game_core::PlayerId,
     #[export]
     pub is_local: bool,
+    pub input: GodotInputData,
 
     base: Base<Sprite2D>,
 }
 
 use godot::classes::ISprite2D;
+
+use crate::game_state::GodotInputData;
 
 #[godot_api]
 impl ISprite2D for Player {
@@ -26,6 +30,12 @@ impl ISprite2D for Player {
             angular_speed: std::f64::consts::PI,
             player_id: DEFAULT_PLAYER_ID, // Default player ID, can be set later
             is_local: false,              // Default to not being local, can be set later
+            input: GodotInputData {
+                up: false,
+                down: false,
+                left: false,
+                right: false,
+            },
             base,
         }
     }
@@ -46,15 +56,27 @@ impl ISprite2D for Player {
             let input = Input::singleton();
             if input.is_action_pressed("move_right") {
                 velocity += Vector2::RIGHT;
+                self.input.right = true;
+            } else {
+                self.input.right = false;
             }
             if input.is_action_pressed("move_left") {
                 velocity += Vector2::LEFT;
+                self.input.left = true;
+            } else {
+                self.input.left = false;
             }
             if input.is_action_pressed("move_down") {
                 velocity += Vector2::DOWN;
+                self.input.down = true;
+            } else {
+                self.input.down = false;
             }
             if input.is_action_pressed("move_up") {
                 velocity += Vector2::UP;
+                self.input.up = true;
+            } else {
+                self.input.up = false;
             }
 
             if velocity.length() > 0.0 {
