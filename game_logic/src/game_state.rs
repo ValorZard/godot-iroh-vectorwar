@@ -514,4 +514,14 @@ impl GameState {
     pub fn drain_log_buffer(&mut self) -> Vec<String> {
         self.log_buffer.drain(..).collect()
     }
+
+    // if there is a local player, that means we are actually playing
+    pub fn is_actually_playing(&self) -> bool {
+        if let Some(NetworkState::ServerConnection(_, is_host)) = &self.network_state {
+            return *is_host;
+        } else if let Some(NetworkState::ClientConnection(_)) = &self.network_state {
+            return true;
+        }
+        false
+    }
 }

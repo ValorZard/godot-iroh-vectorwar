@@ -164,24 +164,27 @@ impl GameState {
         if self.inner.network_state.is_none() {
             return;
         }
-        // get local player position to send to the server
-        let local_player_ref = self.player_id_to_godot_map.get(
-            &self
-                .inner
-                .get_local_network_id()
-                .expect("Network state should be set by now"),
-        );
-        let local_player_position = local_player_ref
-            .and_then(|player_node| {
-                let position = player_node.get_global_position();
-                Some(PlayerPosition {
-                    x: position.x,
-                    y: position.y,
-                })
-            })
-            .expect("There should be an initialized local player linked to the network");
 
-        self.inner.submit_local_input(local_player_position);
+        if self.inner.is_actually_playing() {
+            // get local player position to send to the server
+            let local_player_ref = self.player_id_to_godot_map.get(
+                &self
+                    .inner
+                    .get_local_network_id()
+                    .expect("Network state should be set by now"),
+            );
+            let local_player_position = local_player_ref
+                .and_then(|player_node| {
+                    let position = player_node.get_global_position();
+                    Some(PlayerPosition {
+                        x: position.x,
+                        y: position.y,
+                    })
+                })
+                .expect("There should be an initialized local player linked to the network");
+
+            self.inner.submit_local_input(local_player_position);
+        }
 
         let poll_result = self.inner.poll();
         for new_player in poll_result.new_players {
