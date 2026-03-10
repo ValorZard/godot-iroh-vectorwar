@@ -33,8 +33,8 @@ pub const DEFAULT_PLAYER_WIDTH: f32 = 50.0;
 pub const DEFAULT_PLAYER_HEIGHT: f32 = 50.0;
 
 pub enum NetworkState {
-    ClientConnection(Client, Entity),
-    ServerConnection(Server, Option<Entity>),
+    ClientConnection(Client),
+    ServerConnection(Server, bool), // bool indicates whether the server is also a player
 }
 
 pub struct GameState {
@@ -42,6 +42,7 @@ pub struct GameState {
     world: World,
     remote_player_map: HashMap<PlayerId, hecs::Entity>,
     log_buffer: Vec<String>,
+    local_player_entity: Option<Entity>,
 }
 
 impl Default for GameState {
@@ -51,6 +52,7 @@ impl Default for GameState {
             world: World::new(),
             remote_player_map: HashMap::new(),
             log_buffer: Vec::new(),
+            local_player_entity: None,
         }
     }
 }
@@ -61,15 +63,20 @@ pub struct PollResult {
 }
 
 impl GameState {
-    pub async fn start_server(&mut self) -> Option<Entity> {
+    pub async fn start_server(&mut self, is_host: bool) -> Option<Entity> {
         if let Ok(server) = run_server().await {
             println!("server running with id {}", server.get_server_id());
-            let player_ref = self.spawn_local_player(server.get_server_id());
             self.network_state = Some(NetworkState::ServerConnection(
                 server,
-                Some(player_ref.clone()),
+                is_host,
             ));
-            Some(player_ref)
+            if is_host {
+                let player_id = self.get_local_network_id().expect("Server ID should be set.");
+                let player_ref = self.spawn_local_player(player_id);
+                return Some(player_ref);
+            } else {
+                return None;
+            }
         } else {
             self.log_buffer.push("failed to run server".to_string());
             None
@@ -84,7 +91,7 @@ impl GameState {
                 let player_id = client.get_local_endpoint_id();
                 let player_ref = self.spawn_local_player(player_id);
                 self.network_state =
-                    Some(NetworkState::ClientConnection(client, player_ref.clone()));
+                    Some(NetworkState::ClientConnection(client));
                 Some(player_ref)
             }
             Err(e) => {
@@ -109,6 +116,7 @@ impl GameState {
             .push(format!("Spawned local player with ID: {}", player_id));
         self.remote_player_map
             .insert(player_id.clone(), player.clone());
+        self.local_player_entity = Some(player);
         player
     }
 
@@ -176,7 +184,7 @@ impl GameState {
 
     pub fn poll(&mut self) -> PollResult {
         match &self.network_state {
-            Some(NetworkState::ClientConnection(_, _)) => self.poll_client(),
+            Some(NetworkState::ClientConnection(_)) => self.poll_client(),
             Some(NetworkState::ServerConnection(_, _)) => self.poll_server(),
             None => PollResult {
                 new_players: Vec::new(),
@@ -189,7 +197,7 @@ impl GameState {
         let mut network_state = self.network_state.take();
         let mut new_players = Vec::new();
         let mut leaving_players = Vec::new();
-        if let Some(NetworkState::ClientConnection(client, player_ref)) = &mut network_state {
+        if let Some(NetworkState::ClientConnection(client)) = &mut network_state {
             // Drain log messages from async tasks
             while let Ok(log_msg) = client.log_receiver.try_recv() {
                 self.log_buffer.push(log_msg);
@@ -274,12 +282,11 @@ impl GameState {
         let mut network_state = self.network_state.take();
         let mut new_players_set = HashSet::new();
         let mut leaving_players_set = HashSet::new();
-        if let Some(NetworkState::ServerConnection(server, player_ref)) = &mut network_state {
+        if let Some(NetworkState::ServerConnection(server, is_host)) = &mut network_state {
             // Drain log messages from server async tasks
             while let Ok(log_msg) = server.log_receiver.try_recv() {
                 self.log_buffer.push(log_msg);
             }
-            let player_ref = player_ref.clone();
             // Handle server logic with the channel_map
             let channel_map = server.channel_map.clone();
             for (player_id, channel) in channel_map.iter() {
@@ -295,7 +302,7 @@ impl GameState {
                                 // send list of players to player who just joined
                                 let mut player_ids: Vec<PlayerId> = channel_map.keys();
                                 // Include the host player so clients know about it
-                                if player_ref.is_some() {
+                                if *is_host {
                                     let host_id = server.get_server_id();
                                     if !player_ids.contains(&host_id) {
                                         player_ids.push(host_id);
@@ -422,7 +429,7 @@ impl GameState {
 
     pub async fn close_client(&mut self) {
         let mut network_state = self.network_state.take();
-        if let Some(NetworkState::ClientConnection(client, _)) = &mut network_state {
+        if let Some(NetworkState::ClientConnection(client)) = &mut network_state {
             // Cancel the client if it is running
             let _ = client.cancel_sender.send(true);
             // Optionally, you can also wait for the client's tasks to finish
@@ -432,7 +439,7 @@ impl GameState {
 
     pub fn close_server(&mut self) {
         let mut network_state = self.network_state.take();
-        if let Some(NetworkState::ServerConnection(server, player_ref)) = &mut network_state {
+        if let Some(NetworkState::ServerConnection(server, _)) = &mut network_state {
             // Clean up resources if necessary
             for (_player_id, message_channels) in server.channel_map.iter() {
                 // shut down the tasks for each player
@@ -452,7 +459,7 @@ impl GameState {
     }
 
     pub fn get_local_network_id(&self) -> Option<String> {
-        if let Some(NetworkState::ClientConnection(client, _)) = &self.network_state {
+        if let Some(NetworkState::ClientConnection(client)) = &self.network_state {
             return Some(client.get_local_endpoint_id());
         } else if let Some(NetworkState::ServerConnection(server, _)) = &self.network_state {
             return Some(server.get_server_id());
@@ -462,33 +469,20 @@ impl GameState {
 
     pub fn get_current_network_state(&self) -> Option<String> {
         match &self.network_state {
-            Some(NetworkState::ClientConnection(_, _)) => Some("Client".to_string()),
+            Some(NetworkState::ClientConnection(_)) => Some("Client".to_string()),
             Some(NetworkState::ServerConnection(_, _)) => Some("Server".to_string()),
             None => None,
         }
     }
 
     pub fn get_local_player_component(&mut self) -> Option<Player> {
-        let local_player_id = self.get_local_network_id();
-        if local_player_id.is_none() {
-            self.log_buffer
-                .push("[DEBUG] get_local_player_component: no local network ID".to_string());
-            return None;
-        }
-        let local_player_id = local_player_id.unwrap();
-
-        let local_player_entity = self.remote_player_map.get(&local_player_id);
-        if local_player_entity.is_none() {
-            self.log_buffer.push(format!("[DEBUG] get_local_player_component: player ID '{}' not in remote_player_map (map has {} entries)", local_player_id, self.remote_player_map.len()));
-            return None;
-        }
-        let local_player_entity = *local_player_entity.unwrap();
+        let local_player_entity = self.local_player_entity?;
 
         let query = self.world.query_one_mut::<&Player>(local_player_entity);
         if query.is_err() {
             self.log_buffer.push(format!(
                 "[DEBUG] get_local_player_component: entity {:?} query failed for player '{}'",
-                local_player_entity, local_player_id
+                local_player_entity, self.get_local_network_id().unwrap_or("No associated network ID".to_string())
             ));
             return None;
         }
