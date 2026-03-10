@@ -1,12 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
+use game_logic::game_state::{DEFAULT_POSITION, GameState as GameStateInner, InputData};
 use game_network::{
     DEFAULT_PLAYER_ID, PlayerId, PlayerPosition, ReliableClientMessage, ReliableServerMessage,
     UnreliableClientMessage, UnreliableServerMessage,
     client::{Client, run_client},
     server::{self, Server, run_server},
 };
-use game_logic::game_state::{DEFAULT_POSITION, GameState as GameStateInner, InputData};
 use godot::{classes::ISprite2D, meta::ByValue, prelude::*};
 use hecs::{Entity, World};
 use tokio::time::error::Error;
