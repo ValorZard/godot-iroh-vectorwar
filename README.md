@@ -46,7 +46,7 @@ This project follows a very rough [Model-View-Controller](https://developer.mozi
 - Rust code (in game_logic and game_network) is the Controller.
 
 The actual list of crates/directories is as follows:
-- `rust`: The Rust directory for writing code.
+- `rust`: The Rust directory for writing Godot specific Rust code.
 - `godot`: The Godot project directory, where scenes and assets are located.
 - `game_logic`: This is where a lot of the code related to GameState management is located
 - `game_network`: This crate handles the actual QUIC/Iroh networking code (99% of your async code should be here)
