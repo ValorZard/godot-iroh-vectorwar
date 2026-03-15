@@ -41,9 +41,9 @@ If you are working with VS Code, I recommend you to use the `rust-analyzer` exte
 ## Project Structure
 
 This project follows a very rough [Model-View-Controller](https://developer.mozilla.org/en-US/docs/Glossary/MVC) pattern, where:
-- the ECS (in this case [hecs](https://github.com/Ralith/hecs) is the Model
-- Godot is the view (gets user input)
-- Rust code (in game_logic and game_network) is the controller.
+- the ECS (in this case [hecs](https://github.com/Ralith/hecs)) is the Model
+- Godot is the View (gets user input)
+- Rust code (in game_logic and game_network) is the Controller.
 
 The actual list of crates/directories is as follows:
 - `rust`: The Rust directory for writing code.
