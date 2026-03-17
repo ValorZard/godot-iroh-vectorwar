@@ -40,10 +40,7 @@ impl AsyncRuntime {
     /// This function has no real use for the user, only to make it easier
     /// for this crate to access the singleton object.
     fn singleton() -> Option<Gd<AsyncRuntime>> {
-        match Engine::singleton().get_singleton(&Self::class_id().to_string_name()) {
-            Some(singleton) => Some(singleton.cast::<Self>()),
-            None => None,
-        }
+        Engine::singleton().get_singleton(&Self::class_id().to_string_name()).map(|singleton| singleton.cast::<Self>())
     }
 
     /// **Can Panic**

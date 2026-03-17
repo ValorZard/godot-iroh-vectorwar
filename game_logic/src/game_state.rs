@@ -69,9 +69,9 @@ impl GameState {
                     .get_local_network_id()
                     .expect("Server ID should be set.");
                 let player_ref = self.spawn_local_player(player_id);
-                return Some(player_ref);
+                Some(player_ref)
             } else {
-                return None;
+                None
             }
         } else {
             self.log_buffer.push("failed to run server".to_string());
@@ -110,7 +110,7 @@ impl GameState {
         self.log_buffer
             .push(format!("Spawned local player with ID: {}", player_id));
         self.remote_player_map
-            .insert(player_id.clone(), player.clone());
+            .insert(player_id.clone(), player);
         self.local_player_entity = Some(player);
         player
     }
@@ -129,7 +129,7 @@ impl GameState {
             },
         ));
         self.remote_player_map
-            .insert(player_id.clone(), player.clone());
+            .insert(player_id.clone(), player);
         self.log_buffer
             .push(format!("Spawned remote player with ID: {}", player_id));
         Some(player)
@@ -416,10 +416,10 @@ impl GameState {
         }
         self.network_state = network_state;
 
-        return PollResult {
+        PollResult {
             new_players: new_players_set.into_iter().collect(),
             leaving_players: leaving_players_set.into_iter().collect(),
-        };
+        }
     }
 
     pub async fn close_client(&mut self) {

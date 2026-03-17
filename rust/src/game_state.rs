@@ -169,12 +169,12 @@ impl GameState {
                     .expect("Network state should be set by now"),
             );
             let local_player_position = local_player_ref
-                .and_then(|player_node| {
+                .map(|player_node| {
                     let position = player_node.get_global_position();
-                    Some(PlayerPosition {
+                    PlayerPosition {
                         x: position.x,
                         y: position.y,
-                    })
+                    }
                 })
                 .expect("There should be an initialized local player linked to the network");
 

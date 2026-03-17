@@ -1,17 +1,16 @@
 use std::str::FromStr;
-use std::{error::Error, sync::Arc};
+use std::error::Error;
 
 use tokio::sync::watch;
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use crate::{
-    EXAMPLE_ALPN, LogReceiver, LogSender, MessageSize, PlayerId, ReliableClientMessage,
+    EXAMPLE_ALPN, LogReceiver, LogSender, MessageSize, ReliableClientMessage,
     ReliableServerMessage, UNIDIRECTIONAL_STREAM_LIMIT, UnreliableClientMessage,
     UnreliableServerMessage, log,
 };
 use iroh::endpoint::{Connection, QuicTransportConfig, RecvStream, SendStream, VarInt};
-use iroh::{Endpoint, EndpointAddr, PublicKey, RelayMode, SecretKey, endpoint};
+use iroh::{Endpoint, EndpointAddr, PublicKey, RelayMode, SecretKey};
 use rkyv::rancor;
 
 pub struct Client {
@@ -79,9 +78,9 @@ pub fn serialize_reliable_client_message(
             let header = [&crate::DELIMITER[..], &size[..]].concat();
             // prepend the header to the serialized message
             let serialized_message = [&header, bytes.as_slice()].concat();
-            return Ok(serialized_message);
+            Ok(serialized_message)
         }
-        Err(e) => return Err(Box::new(e)),
+        Err(e) => Err(Box::new(e)),
     }
 }
 
@@ -97,9 +96,9 @@ pub fn serialize_unreliable_client_message(
             let header = [&crate::DELIMITER[..], &size[..]].concat();
             // prepend the header to the serialized message
             let serialized_message = [&header, bytes.as_slice()].concat();
-            return Ok(serialized_message);
+            Ok(serialized_message)
         }
-        Err(e) => return Err(Box::new(e)),
+        Err(e) => Err(Box::new(e)),
     }
 }
 
@@ -388,7 +387,7 @@ async fn connect_client_to_server(
 ) -> Result<Client, Box<dyn Error + Send + Sync + 'static>> {
     let (cancel_sender, cancel_receiver) = watch::channel(false);
     println!("[client] connecting channel to server");
-    let (mut send_stream, mut recv_stream) = connection
+    let (send_stream, recv_stream) = connection
         .accept_bi()
         .await
         .map_err(|e| format!("Failed to accept bidirectional stream: {}", e))?;

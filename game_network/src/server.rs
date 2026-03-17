@@ -5,18 +5,17 @@
 use std::{
     collections::HashMap,
     error::Error,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{Arc, Mutex},
 };
 
 use crate::{
     DELIMITER, EXAMPLE_ALPN, LogSender, MessageSize, PlayerId, ReliableClientMessage,
-    ReliableServerMessage, UNIDIRECTIONAL_STREAM_LIMIT, UnreliableClientMessage,
+    ReliableServerMessage, UnreliableClientMessage,
     UnreliableServerMessage, log,
 };
-use iroh::{Endpoint, RelayMode, SecretKey, endpoint};
+use iroh::{Endpoint, SecretKey};
 use iroh::{
-    endpoint::{Connection, QuicTransportConfig, RecvStream, SendStream, VarInt},
+    endpoint::{Connection, RecvStream, SendStream, VarInt},
     protocol::{AcceptError, ProtocolHandler, Router},
 };
 use rkyv::rancor;
@@ -25,6 +24,12 @@ use tokio::{sync::watch, task::JoinSet};
 #[derive(Debug, Clone)]
 pub struct ChannelMap {
     inner: Arc<Mutex<HashMap<PlayerId, MessageChannels>>>,
+}
+
+impl Default for ChannelMap {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ChannelMap {
@@ -139,9 +144,9 @@ pub fn serialize_reliable_server_message(
             let header = [&crate::DELIMITER[..], &size[..]].concat();
             // prepend the header to the serialized message
             let serialized_message = [&header, bytes.as_slice()].concat();
-            return Ok(serialized_message);
+            Ok(serialized_message)
         }
-        Err(e) => return Err(Box::new(e)),
+        Err(e) => Err(Box::new(e)),
     }
 }
 
@@ -157,9 +162,9 @@ pub fn serialize_unreliable_server_message(
             let header = [&crate::DELIMITER[..], &size[..]].concat();
             // prepend the header to the serialized message
             let serialized_message = [&header, bytes.as_slice()].concat();
-            return Ok(serialized_message);
+            Ok(serialized_message)
         }
-        Err(e) => return Err(Box::new(e)),
+        Err(e) => Err(Box::new(e)),
     }
 }
 
@@ -444,7 +449,7 @@ impl ProtocolHandler for ServerProtocol {
         )
         .await;
         let mut join_set = JoinSet::new();
-        let (mut send_stream, mut recv_stream) = conn.open_bi().await.unwrap();
+        let (mut send_stream, recv_stream) = conn.open_bi().await.unwrap();
         log(
             &self.log_sender,
             "[server] opened bidirectional stream".into(),
