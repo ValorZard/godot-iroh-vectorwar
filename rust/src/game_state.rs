@@ -1,19 +1,14 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use game_logic::game_state::{DEFAULT_POSITION, GameState as GameStateInner, InputData};
+use game_logic::game_state::GameState as GameStateInner;
 use game_network::{
-    DEFAULT_PLAYER_ID, PlayerId, PlayerPosition, ReliableClientMessage, ReliableServerMessage,
-    UnreliableClientMessage, UnreliableServerMessage,
-    client::{Client, run_client},
-    server::{self, Server, run_server},
+    PlayerId, PlayerPosition,
 };
-use godot::{classes::ISprite2D, meta::ByValue, prelude::*};
-use hecs::{Entity, World};
-use tokio::time::error::Error;
+use godot::{meta::ByValue, prelude::*};
 
 use crate::{
     async_runtime::AsyncRuntime,
-    player::{self, Player},
+    player::Player,
 };
 
 #[derive(Debug, Clone)]
@@ -83,7 +78,7 @@ impl GameState {
     ) -> Option<Gd<Player>> {
         let entity = AsyncRuntime::block_on(self.inner.start_server(is_host));
         self.player_template = Some(player_template);
-        if let Some(player_entity) = entity {
+        if let Some(_player_entity) = entity {
             let player_node = self.spawn_local_player(self.inner.get_local_network_id().unwrap());
             Some(player_node)
         } else {
@@ -99,7 +94,7 @@ impl GameState {
     ) -> Option<Gd<Player>> {
         let entity = AsyncRuntime::block_on(self.inner.start_client(server_iroh_string.into()));
         self.player_template = Some(player_template);
-        if let Some(player_entity) = entity {
+        if let Some(_player_entity) = entity {
             let player_node = self.spawn_local_player(self.inner.get_local_network_id().unwrap());
             Some(player_node)
         } else {
@@ -127,7 +122,7 @@ impl GameState {
     fn spawn_remote_player(&mut self, player_id: PlayerId) {
         // The inner poll_client/poll_server already spawned the entity in the ECS world,
         // so just look it up instead of trying to spawn again.
-        let Some(entity) = self.inner.get_entity_associated_with_player_id(&player_id) else {
+        let Some(_entity) = self.inner.get_entity_associated_with_player_id(&player_id) else {
             return;
         };
         if self.player_id_to_godot_map.contains_key(&player_id) {

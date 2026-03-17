@@ -1,13 +1,10 @@
-use std::{
-    collections::{HashMap, HashSet},
-    task::Poll,
-};
+use std::collections::{HashMap, HashSet};
 
 use game_network::{
-    DEFAULT_PLAYER_ID, PlayerId, PlayerPosition, ReliableClientMessage, ReliableServerMessage,
+    PlayerId, PlayerPosition, ReliableClientMessage, ReliableServerMessage,
     UnreliableClientMessage, UnreliableServerMessage,
     client::{Client, run_client},
-    server::{self, Server, run_server},
+    server::{Server, run_server},
 };
 use hecs::{Entity, World};
 
@@ -208,7 +205,7 @@ impl GameState {
                 self.log_buffer
                     .push(format!("Received message from server: {:?}", message));
                 match message {
-                    ReliableServerMessage::Hello { player_id } => {}
+                    ReliableServerMessage::Hello { player_id: _ } => {}
                     ReliableServerMessage::PlayersJoined { player_ids } => {
                         for remote_player_id in player_ids.clone() {
                             self.spawn_remote_player(remote_player_id);

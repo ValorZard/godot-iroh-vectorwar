@@ -1,4 +1,3 @@
-use game_logic::game_state::InputData;
 use game_network::DEFAULT_PLAYER_ID;
 use godot::classes::{Input, Sprite2D};
 use godot::prelude::*;
