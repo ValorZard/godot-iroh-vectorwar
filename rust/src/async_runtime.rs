@@ -37,19 +37,12 @@ impl IObject for AsyncRuntime {
 
 #[godot_api]
 impl AsyncRuntime {
-    /// This function has no real use for the user, only to make it easier
-    /// for this crate to access the singleton object.
-    fn singleton() -> Option<Gd<AsyncRuntime>> {
-        Engine::singleton().get_singleton(&Self::class_id().to_string_name()).map(|singleton| singleton.cast::<Self>())
-    }
-
     /// **Can Panic**
     ///
     /// Gets the active runtime under the [`AsyncRuntime`] singleton. This can panic if the singleton is unreachable,
     /// or has no ability to be registered by the engine.
     pub fn runtime() -> Rc<Runtime> {
-        let singleton = Self::singleton()
-            .expect("Engine was not able to register, or get `AsyncRuntime` singleton!");
+        let singleton = Self::singleton();
         let bind = singleton.bind();
         Rc::clone(&bind.runtime)
     }

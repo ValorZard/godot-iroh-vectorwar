@@ -1,8 +1,7 @@
-use std::str::FromStr;
 use std::error::Error;
+use std::str::FromStr;
 
 use tokio::sync::watch;
-
 
 use crate::{
     EXAMPLE_ALPN, LogReceiver, LogSender, MessageSize, ReliableClientMessage,

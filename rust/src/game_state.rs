@@ -1,15 +1,10 @@
 use std::collections::HashMap;
 
 use game_logic::game_state::GameState as GameStateInner;
-use game_network::{
-    PlayerId, PlayerPosition,
-};
+use game_network::{PlayerId, PlayerPosition};
 use godot::{meta::ByValue, prelude::*};
 
-use crate::{
-    async_runtime::AsyncRuntime,
-    player::Player,
-};
+use crate::{async_runtime::AsyncRuntime, player::Player};
 
 #[derive(Debug, Clone)]
 pub struct GodotInputData {

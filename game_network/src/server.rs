@@ -10,8 +10,7 @@ use std::{
 
 use crate::{
     DELIMITER, EXAMPLE_ALPN, LogSender, MessageSize, PlayerId, ReliableClientMessage,
-    ReliableServerMessage, UnreliableClientMessage,
-    UnreliableServerMessage, log,
+    ReliableServerMessage, UnreliableClientMessage, UnreliableServerMessage, log,
 };
 use iroh::{Endpoint, SecretKey};
 use iroh::{

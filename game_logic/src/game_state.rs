@@ -109,8 +109,7 @@ impl GameState {
         ));
         self.log_buffer
             .push(format!("Spawned local player with ID: {}", player_id));
-        self.remote_player_map
-            .insert(player_id.clone(), player);
+        self.remote_player_map.insert(player_id.clone(), player);
         self.local_player_entity = Some(player);
         player
     }
@@ -128,8 +127,7 @@ impl GameState {
                 is_local: false,
             },
         ));
-        self.remote_player_map
-            .insert(player_id.clone(), player);
+        self.remote_player_map.insert(player_id.clone(), player);
         self.log_buffer
             .push(format!("Spawned remote player with ID: {}", player_id));
         Some(player)
